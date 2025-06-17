@@ -1,5 +1,6 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import {
+import axios from 'axios';
+import type { AxiosInstance, AxiosResponse } from 'axios';
+import type {
   User,
   Team,
   Channel,
@@ -8,7 +9,6 @@ import {
   LoginResponse,
   APIError,
   ChannelMember,
-  TeamMember,
   CreateChannelRequest,
   CreatePostRequest,
   WebSocketEvent

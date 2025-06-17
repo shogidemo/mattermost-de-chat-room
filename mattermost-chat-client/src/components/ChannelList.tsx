@@ -18,7 +18,7 @@ import {
   Group as GroupIcon,
 } from '@mui/icons-material';
 import { useApp } from '../contexts/AppContext';
-import { Channel } from '../types/mattermost';
+import type { Channel } from '../types/mattermost';
 
 const ChannelList: React.FC = () => {
   const { state, selectChannel } = useApp();
@@ -40,21 +40,6 @@ const ChannelList: React.FC = () => {
     }
   };
 
-  // チャンネルタイプの日本語表示
-  const getChannelTypeLabel = (channelType: string) => {
-    switch (channelType) {
-      case 'O':
-        return 'パブリック';
-      case 'P':
-        return 'プライベート';
-      case 'D':
-        return 'DM';
-      case 'G':
-        return 'グループDM';
-      default:
-        return '';
-    }
-  };
 
   // チャンネル名の表示用フォーマット
   const getDisplayName = (channel: Channel) => {

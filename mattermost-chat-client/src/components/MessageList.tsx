@@ -15,9 +15,9 @@ import {
   Reply as ReplyIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Push as ThreadIcon,
+  Forum as ThreadIcon,
 } from '@mui/icons-material';
-import { Post } from '../types/mattermost';
+import type { Post } from '../types/mattermost';
 import { useApp } from '../contexts/AppContext';
 
 interface MessageListProps {

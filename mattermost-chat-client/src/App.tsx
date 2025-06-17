@@ -4,8 +4,6 @@ import {
   AppBar,
   Toolbar,
   Typography,
-  Button,
-  Grid,
   CssBaseline,
   ThemeProvider,
   createTheme,
@@ -49,7 +47,7 @@ const theme = createTheme({
 // メインチャット画面コンポーネント
 const ChatApp: React.FC = () => {
   const { state, logout } = useApp();
-  const { user, currentTeam, isConnected } = state;
+  const { user, isConnected } = state;
 
   const handleLogout = async () => {
     try {
@@ -93,29 +91,31 @@ const ChatApp: React.FC = () => {
       </AppBar>
 
       {/* メインコンテンツ */}
-      <Box sx={{ flex: 1, overflow: 'hidden' }}>
-        <Grid container sx={{ height: '100%' }}>
-          {/* チャンネル一覧（左サイドバー） */}
-          <Grid item xs={12} md={3} lg={2}>
-            <Paper
-              square
-              elevation={2}
-              sx={{
-                height: '100%',
-                borderRight: 1,
-                borderColor: 'divider',
-                display: { xs: 'none', md: 'block' },
-              }}
-            >
-              <ChannelList />
-            </Paper>
-          </Grid>
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', height: '100%' }}>
+        {/* チャンネル一覧（左サイドバー） */}
+        <Box
+          sx={{
+            width: { xs: 0, md: 280 },
+            display: { xs: 'none', md: 'block' },
+            borderRight: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Paper
+            square
+            elevation={2}
+            sx={{
+              height: '100%',
+            }}
+          >
+            <ChannelList />
+          </Paper>
+        </Box>
 
-          {/* チャット画面（メインエリア） */}
-          <Grid item xs={12} md={9} lg={10}>
-            <ChatView />
-          </Grid>
-        </Grid>
+        {/* チャット画面（メインエリア） */}
+        <Box sx={{ flex: 1, height: '100%' }}>
+          <ChatView />
+        </Box>
       </Box>
     </Box>
   );

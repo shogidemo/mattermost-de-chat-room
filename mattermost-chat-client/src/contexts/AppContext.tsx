@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
-import { AppState, User, Team, Channel, Post, WebSocketEvent } from '../types/mattermost';
+import type { AppState, User, Team, Channel, Post, WebSocketEvent } from '../types/mattermost';
 
 // アプリケーション状態の初期値
 const initialState: AppState = {
