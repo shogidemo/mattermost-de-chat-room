@@ -21,23 +21,30 @@ class MattermostClient {
   private websocketUrl: string;
   private eventHandlers: Map<string, ((event: WebSocketEvent) => void)[]> = new Map();
 
-  constructor(baseURL: string = 'http://localhost:8065') {
+  constructor(baseURL: string = '') {
+    // 開発環境ではViteプロキシを使用、本番環境では直接アクセス
+    const apiBaseURL = baseURL || (import.meta.env.DEV ? '/api/v4' : 'http://localhost:8065/api/v4');
+    
     this.axiosInstance = axios.create({
-      baseURL: `${baseURL}/api/v4`,
+      baseURL: apiBaseURL,
       timeout: 10000,
+      withCredentials: true, // クッキー認証を有効化
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    this.websocketUrl = baseURL.replace('http', 'ws') + '/api/v4/websocket';
+    // WebSocket URL の設定
+    const wsBaseURL = baseURL || 'http://localhost:8065';
+    this.websocketUrl = wsBaseURL.replace('http', 'ws') + '/api/v4/websocket';
 
     // リクエストインターセプター - 認証トークンを自動で追加
     this.axiosInstance.interceptors.request.use(
       (config) => {
-        if (this.token) {
+        if (this.token && this.token !== 'session-based') {
           config.headers['Authorization'] = `Bearer ${this.token}`;
         }
+        // セッションベース認証ではクッキーを使用（withCredentials: trueで自動）
         return config;
       },
       (error) => {
@@ -67,16 +74,44 @@ class MattermostClient {
   // 認証関連メソッド
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
+      console.log('🔐 ログイン試行:', { login_id: credentials.login_id });
+      
       const response: AxiosResponse<User> = await this.axiosInstance.post('/users/login', credentials);
       const user = response.data;
-      this.token = response.headers['token'];
+      
+      // Mattermostは複数の方法でトークンを返す可能性がある
+      this.token = response.headers['token'] || 
+                   response.headers['Token'] || 
+                   response.headers['authorization']?.replace('Bearer ', '') ||
+                   (user as any).token;
+      
+      console.log('📥 レスポンスヘッダー:', response.headers);
+      console.log('👤 ユーザー情報:', user);
+      console.log('🎫 取得トークン:', this.token ? 'あり' : 'なし');
       
       if (!this.token) {
-        throw new Error('認証トークンが取得できませんでした');
+        console.warn('⚠️ トークンがヘッダーで見つからない、ユーザーオブジェクトを確認');
+        // ユーザーオブジェクトからトークンを探す
+        if (user && typeof user === 'object') {
+          const userObj = user as any;
+          this.token = userObj.token || userObj.auth_token || userObj.session_token;
+        }
+      }
+      
+      if (!this.token) {
+        console.error('❌ 認証トークンが見つかりません');
+        console.log('利用可能なヘッダー:', Object.keys(response.headers));
+        console.log('ユーザーオブジェクトのキー:', user ? Object.keys(user) : 'なし');
+        
+        // セッションベース認証を試行（トークンがない場合）
+        console.log('🔄 セッションベース認証に切り替え');
+        this.token = 'session-based'; // セッション認証フラグ
       }
 
-      // ローカルストレージにトークンを保存
-      localStorage.setItem('mattermost_token', this.token);
+      // ローカルストレージに保存
+      if (this.token && this.token !== 'session-based') {
+        localStorage.setItem('mattermost_token', this.token);
+      }
       localStorage.setItem('mattermost_user', JSON.stringify(user));
 
       return { token: this.token, user };
@@ -202,31 +237,42 @@ class MattermostClient {
   // WebSocket関連メソッド
   async connectWebSocket(): Promise<void> {
     if (!this.token) {
+      console.error('❌ WebSocket接続にはトークンが必要ですが、トークンがありません');
       throw new Error('WebSocket接続には認証が必要です');
     }
 
+    console.log('🔌 WebSocket接続開始:', { token: this.token === 'session-based' ? 'session-based' : 'token-based', url: this.websocketUrl });
+
     return new Promise((resolve, reject) => {
       try {
-        this.websocket = new WebSocket(`${this.websocketUrl}?token=${this.token}`);
+        // セッションベース認証の場合は、トークンなしでWebSocket接続を試行
+        const wsUrl = this.token === 'session-based' 
+          ? this.websocketUrl 
+          : `${this.websocketUrl}?token=${this.token}`;
+          
+        console.log('🔗 WebSocket URL:', wsUrl);
+        this.websocket = new WebSocket(wsUrl);
 
         this.websocket.onopen = () => {
-          console.log('WebSocket接続が確立されました');
+          console.log('✅ WebSocket接続が確立されました');
           resolve();
         };
 
         this.websocket.onmessage = (event) => {
           try {
             const wsEvent: WebSocketEvent = JSON.parse(event.data);
+            console.log('📨 WebSocketメッセージ受信:', wsEvent.event);
             this.handleWebSocketEvent(wsEvent);
           } catch (error) {
-            console.error('WebSocketメッセージの解析エラー:', error);
+            console.error('❌ WebSocketメッセージの解析エラー:', error);
           }
         };
 
         this.websocket.onclose = (event) => {
-          console.log('WebSocket接続が閉じられました:', event.code, event.reason);
-          // 自動再接続ロジック（オプション）
-          if (event.code !== 1000) { // 正常終了以外の場合
+          console.log('🔌 WebSocket接続が閉じられました:', { code: event.code, reason: event.reason });
+          // 認証エラー以外の場合は自動再接続
+          if (event.code !== 1000 && event.code !== 4001) { // 正常終了・認証エラー以外の場合
+            console.log('🔄 5秒後に再接続を試行します');
             setTimeout(() => {
               if (this.token) {
                 this.connectWebSocket();
@@ -236,10 +282,20 @@ class MattermostClient {
         };
 
         this.websocket.onerror = (error) => {
-          console.error('WebSocketエラー:', error);
-          reject(error);
+          console.error('❌ WebSocketエラー詳細:', {
+            error,
+            readyState: this.websocket?.readyState,
+            url: this.websocket?.url,
+            token: this.token ? 'あり' : 'なし'
+          });
+          
+          // エラーをグローバルに捕捉されないようにする
+          setTimeout(() => {
+            reject(new Error(`WebSocket接続エラー: readyState=${this.websocket?.readyState}`));
+          }, 0);
         };
       } catch (error) {
+        console.error('❌ WebSocket接続エラー:', error);
         reject(error);
       }
     });
@@ -305,6 +361,11 @@ class MattermostClient {
 
   // ユーティリティメソッド
   isAuthenticated(): boolean {
+    // session-basedの場合は常に認証済みとみなす（セッションベース認証）
+    if (this.token === 'session-based') {
+      return true;
+    }
+    // 通常のトークンベース認証
     return !!this.token;
   }
 

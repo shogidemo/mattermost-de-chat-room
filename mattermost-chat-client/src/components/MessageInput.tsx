@@ -45,11 +45,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
   // メッセージ送信処理
   const handleSendMessage = async () => {
-    if (!message.trim() || !currentChannel || isSending) return;
+    console.log('🚀 メッセージ送信処理開始:', { message: message.trim(), currentChannel: currentChannel?.id, isSending });
+    
+    if (!message.trim() || !currentChannel || isSending) {
+      console.log('❌ 送信条件不満足:', { 
+        hasMessage: !!message.trim(), 
+        hasChannel: !!currentChannel, 
+        notSending: !isSending 
+      });
+      return;
+    }
 
     setIsSending(true);
     try {
+      console.log('📤 sendMessage呼び出し:', message.trim());
       await sendMessage(message.trim(), replyToPost);
+      console.log('✅ メッセージ送信成功');
       setMessage('');
       
       // スレッド返信の場合、入力欄をクリア後にキャンセル処理を呼び出す
@@ -57,7 +68,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
         onCancel();
       }
     } catch (error) {
-      console.error('メッセージ送信エラー:', error);
+      console.error('❌ メッセージ送信エラー:', error);
       // TODO: エラー通知の表示
     } finally {
       setIsSending(false);
@@ -66,7 +77,9 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
   // Enterキーでの送信（Shift+Enterで改行）
   const handleKeyPress = (event: KeyboardEvent<HTMLDivElement>) => {
+    console.log('⌨️ キー押下:', { key: event.key, shift: event.shiftKey });
     if (event.key === 'Enter' && !event.shiftKey) {
+      console.log('🚀 Enterキーでメッセージ送信トリガー');
       event.preventDefault();
       handleSendMessage();
     }
@@ -150,6 +163,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
           disabled={isSending || isLoading}
           variant="outlined"
           size="small"
+          data-testid="message-input"
           sx={{
             '& .MuiOutlinedInput-root': {
               borderRadius: 2,
@@ -173,8 +187,12 @@ const MessageInput: React.FC<MessageInputProps> = ({
         <Tooltip title="送信 (Enter)">
           <IconButton
             color="primary"
-            onClick={handleSendMessage}
+            onClick={() => {
+              console.log('🖱️ 送信ボタンクリック');
+              handleSendMessage();
+            }}
             disabled={!message.trim() || isSending}
+            data-testid="send-button"
             sx={{ mb: 1 }}
           >
             {isSending ? (

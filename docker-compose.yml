@@ -34,7 +34,7 @@ services:
       # サーバー設定
       MM_SERVICESETTINGS_SITEURL: http://localhost:8065
       MM_SERVICESETTINGS_ENABLECORS: true
-      MM_SERVICESETTINGS_CORSALLOWEDORIGINS: "http://localhost:5173"
+      MM_SERVICESETTINGS_CORSALLOWEDORIGINS: "http://localhost:5173,http://localhost:5174"
       MM_SERVICESETTINGS_ENABLEDEVELOPER: true
       
       # セキュリティ設定（開発環境用）

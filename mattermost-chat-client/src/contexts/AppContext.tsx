@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
 import type { AppState, User, Team, Channel, Post, WebSocketEvent } from '../types/mattermost';
@@ -113,7 +113,7 @@ interface AppProviderProps {
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const client = new MattermostClient();
+  const client = useMemo(() => new MattermostClient(), []);
 
   // セッション復元の試行
   useEffect(() => {
@@ -128,14 +128,22 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // WebSocket接続
   const connectWebSocket = async () => {
     try {
+      console.log('🔌 WebSocket接続試行開始');
       await client.connectWebSocket();
+      console.log('✅ WebSocket接続成功');
       dispatch({ type: 'SET_CONNECTED', payload: true });
       
       // WebSocketイベントハンドラーの設定
       setupWebSocketHandlers();
     } catch (error) {
-      console.error('WebSocket接続エラー:', error);
+      console.error('❌ WebSocket接続エラー:', error);
       dispatch({ type: 'SET_CONNECTED', payload: false });
+      
+      // 認証エラーの場合は再ログインが必要
+      if (error.message && error.message.includes('authentication')) {
+        console.error('🔑 認証エラーによりWebSocket接続失敗');
+        dispatch({ type: 'SET_ERROR', payload: '認証が必要です。再ログインしてください。' });
+      }
     }
   };
 
@@ -184,8 +192,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
       dispatch({ type: 'SET_USER', payload: loginResponse.user });
       
-      // WebSocket接続
-      await connectWebSocket();
+      // WebSocket接続（失敗しても続行）
+      try {
+        await connectWebSocket();
+      } catch (error) {
+        console.warn('⚠️ WebSocket接続に失敗しましたが、HTTP APIでチャット機能は利用可能です:', error);
+      }
 
       // ユーザーの所属チームを取得
       const teams = await client.getTeamsForUser(loginResponse.user.id);
@@ -283,19 +295,58 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   // メッセージ送信
   const sendMessage = async (message: string, rootId?: string) => {
+    console.log('📨 AppContext.sendMessage呼び出し:', { message, rootId, currentChannel: state.currentChannel?.id });
+    
     if (!state.currentChannel) {
+      console.error('❌ チャンネルが選択されていません');
       throw new Error('チャンネルが選択されていません');
     }
 
+    // 認証状態の確認
+    const authStatus = client.isAuthenticated();
+    const tokenValue = client.getToken();
+    console.log('🔍 認証状態確認:', { authStatus, tokenValue, tokenType: typeof tokenValue });
+    
+    if (!authStatus) {
+      console.error('❌ 認証が失効しています');
+      dispatch({ type: 'SET_ERROR', payload: '認証が失効しました。再ログインしてください。' });
+      throw new Error('認証が必要です');
+    }
+
     try {
-      await client.createPost({
+      console.log('🔗 client.createPost呼び出し開始');
+      const post = await client.createPost({
         channel_id: state.currentChannel.id,
         message,
         root_id: rootId,
       });
-      // WebSocketで新しい投稿は自動的に受信される
+      console.log('✅ client.createPost成功:', post);
+      
+      // WebSocketが接続されていない場合は、手動でメッセージを追加
+      if (!client.isWebSocketConnected()) {
+        console.log('📥 WebSocket未接続のため、手動でメッセージを追加');
+        dispatch({
+          type: 'ADD_POST',
+          payload: { channelId: state.currentChannel.id, post },
+        });
+        
+        // 最新のメッセージ一覧も再読み込み
+        setTimeout(() => {
+          loadChannelPosts(state.currentChannel.id);
+        }, 500);
+      }
     } catch (error) {
-      console.error('メッセージ送信エラー:', error);
+      console.error('❌ AppContext.sendMessage エラー:', error);
+      
+      // 401エラーの場合は認証切れ
+      if (error && typeof error === 'object' && 'status_code' in error && error.status_code === 401) {
+        console.error('🔑 401認証エラー: セッションが失効しました');
+        dispatch({ type: 'SET_ERROR', payload: '認証が失効しました。再ログインしてください。' });
+        // 認証情報をクリア
+        client.clearSession();
+        dispatch({ type: 'SET_USER', payload: null });
+      }
+      
       throw error;
     }
   };
