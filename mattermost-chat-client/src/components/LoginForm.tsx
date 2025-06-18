@@ -43,7 +43,7 @@ const LoginForm: React.FC = () => {
     }
   };
 
-  const handleKeyPress = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
       handleSubmit(event as any);
     }
@@ -106,7 +106,7 @@ const LoginForm: React.FC = () => {
                 variant="outlined"
                 value={formData.username}
                 onChange={handleInputChange('username')}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 disabled={isLoading}
                 required
                 autoComplete="username"
@@ -121,7 +121,7 @@ const LoginForm: React.FC = () => {
                 variant="outlined"
                 value={formData.password}
                 onChange={handleInputChange('password')}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 disabled={isLoading}
                 required
                 autoComplete="current-password"

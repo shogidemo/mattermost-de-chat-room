@@ -20,6 +20,8 @@ class MattermostClient {
   private websocket: WebSocket | null = null;
   private websocketUrl: string;
   private eventHandlers: Map<string, ((event: WebSocketEvent) => void)[]> = new Map();
+  private reconnectionAttempts: number = 0;
+  private currentBackoffDelay: number = 1000;
 
   constructor(baseURL: string = '') {
     // 開発環境ではViteプロキシを使用、本番環境では直接アクセス
@@ -255,6 +257,9 @@ class MattermostClient {
 
         this.websocket.onopen = () => {
           console.log('✅ WebSocket接続が確立されました');
+          // 接続成功時にリセット
+          this.reconnectionAttempts = 0;
+          this.currentBackoffDelay = 1000;
           resolve();
         };
 
@@ -272,27 +277,36 @@ class MattermostClient {
           console.log('🔌 WebSocket接続が閉じられました:', { code: event.code, reason: event.reason });
           // 認証エラー以外の場合は自動再接続
           if (event.code !== 1000 && event.code !== 4001) { // 正常終了・認証エラー以外の場合
-            console.log('🔄 5秒後に再接続を試行します');
+            const backoffDelay = Math.min(this.currentBackoffDelay, 30000); // 最大遅延は30秒
+            console.log(`🔄 ${backoffDelay / 1000}秒後に再接続を試行します (試行回数: ${this.reconnectionAttempts + 1})`);
             setTimeout(() => {
               if (this.token) {
-                this.connectWebSocket();
+                this.reconnectionAttempts++;
+                this.connectWebSocket().catch((err) => {
+                  console.error('❌ 再接続失敗:', err);
+                });
+                this.currentBackoffDelay = Math.min(this.currentBackoffDelay * 2, 30000); // 最大遅延は30秒
               }
-            }, 5000);
+            }, backoffDelay);
+          } else {
+            // 正常終了または認証エラーの場合はリセット
+            this.reconnectionAttempts = 0;
+            this.currentBackoffDelay = 1000;
           }
         };
 
         this.websocket.onerror = (error) => {
           console.error('❌ WebSocketエラー詳細:', {
-            error,
+            message: (error as any)?.message || '不明なエラー',
+            stack: (error as any)?.stack || 'スタックトレースなし',
             readyState: this.websocket?.readyState,
             url: this.websocket?.url,
-            token: this.token ? 'あり' : 'なし'
+            token: this.token ? 'あり' : 'なし',
+            reconnectionAttempts: this.reconnectionAttempts
           });
           
-          // エラーをグローバルに捕捉されないようにする
-          setTimeout(() => {
-            reject(new Error(`WebSocket接続エラー: readyState=${this.websocket?.readyState}`));
-          }, 0);
+          // Reject the promise to propagate the error
+          reject(new Error(`WebSocket接続エラー: readyState=${this.websocket?.readyState}`));
         };
       } catch (error) {
         console.error('❌ WebSocket接続エラー:', error);
