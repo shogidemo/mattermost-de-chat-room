@@ -8,7 +8,7 @@ test.describe('Mattermost チャット総合テストスイート', () => {
     await page.waitForTimeout(1000);
   };
 
-  const performLogin = async (page: any, username = 'admin', password = 'Admin123!') => {
+  const performLogin = async (page: any, username = 'shogidemo', password = 'hqe8twt_ety!phv3TMH') => {
     await page.goto('http://localhost:5173');
     await waitForNetworkIdle(page);
     

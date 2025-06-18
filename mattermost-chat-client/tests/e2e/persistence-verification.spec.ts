@@ -11,7 +11,7 @@ test.describe('実際の永続化確認テスト', () => {
     console.log('✅ ログインフォームを確認');
 
     // 3. Mattermostにログイン
-    await page.fill('input[autocomplete="username"]', 'admin');
+    await page.fill('input[autocomplete="username"]', 'shogidemo');
     await page.fill('input[autocomplete="password"]', 'password123');
     await page.click('button[type="submit"]');
     console.log('✅ ログイン試行');
@@ -55,7 +55,7 @@ test.describe('実際の永続化確認テスト', () => {
 
     // 12. 再度ログイン
     await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
-    await page.fill('input[autocomplete="username"]', 'admin');
+    await page.fill('input[autocomplete="username"]', 'shogidemo');
     await page.fill('input[autocomplete="password"]', 'password123');
     await page.click('button[type="submit"]');
     console.log('✅ 再ログイン完了');

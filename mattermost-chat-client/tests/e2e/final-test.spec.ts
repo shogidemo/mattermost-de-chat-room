@@ -23,8 +23,8 @@ test.describe('最終動作確認', () => {
     // Step 2: 基本的なログイン動作確認
     console.log('🔧 Step 2: ログイン動作確認');
     
-    await page.fill('input[autocomplete="username"]', 'admin');
-    await page.fill('input[type="password"]', 'Admin123!');
+    await page.fill('input[autocomplete="username"]', 'shogidemo');
+    await page.fill('input[type="password"]', 'hqe8twt_ety!phv3TMH');
     await page.click('button[type="submit"]');
     
     // ログイン結果を待機（成功または失敗どちらでも）

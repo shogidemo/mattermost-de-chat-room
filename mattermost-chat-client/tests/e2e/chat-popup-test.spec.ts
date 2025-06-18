@@ -11,8 +11,8 @@ test.describe('チャットポップアップ機能', () => {
 
   test('ログインからチャット送信まで', async ({ page }) => {
     // Step 1: ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     // メイン画面が表示されるまで待機
@@ -54,8 +54,8 @@ test.describe('チャットポップアップ機能', () => {
 
   test('チャンネル選択後にチャット画面が表示される', async ({ page }) => {
     // ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     await expect(page.locator('h1')).toContainText('穀物輸入管理システム');

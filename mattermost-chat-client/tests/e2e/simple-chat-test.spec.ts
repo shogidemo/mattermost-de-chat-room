@@ -8,8 +8,8 @@ test.describe('シンプルチャットテスト', () => {
     await expect(page.locator('text=Mattermost チャット')).toBeVisible();
     
     // ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     // メイン画面が表示されることを確認
@@ -25,8 +25,8 @@ test.describe('シンプルチャットテスト', () => {
     await page.goto('http://localhost:5173');
     
     // ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     await expect(page.locator('text=穀物輸入管理システム')).toBeVisible({ timeout: 10000 });
@@ -48,8 +48,8 @@ test.describe('シンプルチャットテスト', () => {
     await page.goto('http://localhost:5173');
     
     // ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     await expect(page.locator('text=穀物輸入管理システム')).toBeVisible({ timeout: 10000 });
@@ -74,8 +74,8 @@ test.describe('シンプルチャットテスト', () => {
     await page.goto('http://localhost:5173');
     
     // ログイン
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
+    await page.fill('input[name="username"]', 'shogidemo');
+    await page.fill('input[name="password"]', 'shogidemo123');
     await page.click('button:has-text("ログイン")');
     
     await expect(page.locator('text=穀物輸入管理システム')).toBeVisible({ timeout: 10000 });

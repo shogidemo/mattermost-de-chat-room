@@ -30,8 +30,8 @@ test.describe('Playwrightメッセージ送信テスト', () => {
     
     // Step 2: ログイン
     console.log('🔧 Step 2: ログイン実行');
-    await page.fill('input[autocomplete="username"]', 'admin');
-    await page.fill('input[type="password"]', 'Admin123!');
+    await page.fill('input[autocomplete="username"]', 'shogidemo');
+    await page.fill('input[type="password"]', 'hqe8twt_ety!phv3TMH');
     await page.click('button[type="submit"]');
     
     // ログイン完了を待機
@@ -164,8 +164,8 @@ test.describe('Playwrightメッセージ送信テスト', () => {
     await page.goto('http://localhost:5173');
     await page.waitForLoadState('networkidle');
     
-    await page.fill('input[autocomplete="username"]', 'admin');
-    await page.fill('input[type="password"]', 'Admin123!');
+    await page.fill('input[autocomplete="username"]', 'shogidemo');
+    await page.fill('input[type="password"]', 'hqe8twt_ety!phv3TMH');
     await page.click('button[type="submit"]');
     await page.waitForTimeout(5000);
     
