@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # PostgreSQLデータベース
+  postgres:
+    image: postgres:13-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: mmuser_password
+      POSTGRES_DB: mattermost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - mattermost-network
+
+  # Mattermostサーバー
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    restart: unless-stopped
+    ports:
+      - "8065:8065"
+    environment:
+      # データベース設定
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://mmuser:mmuser_password@postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+      
+      # ファイルストレージ設定
+      MM_FILESETTINGS_DRIVERNAME: local
+      MM_FILESETTINGS_DIRECTORY: /mattermost/data/
+      
+      # サーバー設定
+      MM_SERVICESETTINGS_SITEURL: http://localhost:8065
+      MM_SERVICESETTINGS_ENABLECORS: true
+      MM_SERVICESETTINGS_CORSALLOWEDORIGINS: "http://localhost:5173,http://localhost:5174"
+      MM_SERVICESETTINGS_ENABLEDEVELOPER: true
+      
+      # セキュリティ設定（開発環境用）
+      MM_SERVICESETTINGS_ENABLEINSECUREOUTGOINGCONNECTIONS: true
+      MM_EMAILSETTINGS_ENABLESIGNUPWITHEMAIL: true
+      MM_EMAILSETTINGS_ENABLESIGNINWITHEMAIL: true
+      MM_EMAILSETTINGS_ENABLESIGNINWITHUSERNAME: true
+      MM_TEAMSETTINGS_ENABLEUSERCREATION: true
+      MM_TEAMSETTINGS_ENABLEOPENSERVER: true
+      
+    depends_on:
+      - postgres
+    volumes:
+      - mattermost_data:/mattermost/data
+      - mattermost_logs:/mattermost/logs
+      - mattermost_config:/mattermost/config
+      - mattermost_plugins:/mattermost/plugins
+      - mattermost_client_plugins:/mattermost/client/plugins
+    networks:
+      - mattermost-network
+
+volumes:
+  postgres_data:
+  mattermost_data:
+  mattermost_logs:
+  mattermost_config:
+  mattermost_plugins:
+  mattermost_client_plugins:
+
+networks:
+  mattermost-network:
+    driver: bridge

@@ -1,0 +1,9 @@
+{
+  "headless": false,
+  "browser": "chromium",
+  "viewport-size": "1280,720",
+  "save-trace": true,
+  "output-dir": "./test-results",
+  "caps": "tabs,pdf,history,wait,files",
+  "image-responses": "auto"
+}
