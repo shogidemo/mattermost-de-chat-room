@@ -33,12 +33,19 @@ class MattermostClient {
       withCredentials: true, // クッキー認証を有効化
       headers: {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest', // CSRF保護回避
       },
     });
 
     // WebSocket URL の設定
-    const wsBaseURL = baseURL || 'http://localhost:8065';
-    this.websocketUrl = wsBaseURL.replace('http', 'ws') + '/api/v4/websocket';
+    if (import.meta.env.DEV) {
+      // 開発環境ではViteプロキシ経由でWebSocket接続
+      this.websocketUrl = `ws://localhost:5173/api/v4/websocket`;
+    } else {
+      // 本番環境では直接接続
+      const wsBaseURL = baseURL || 'http://localhost:8065';
+      this.websocketUrl = wsBaseURL.replace('http', 'ws') + '/api/v4/websocket';
+    }
 
     // リクエストインターセプター - 認証トークンを自動で追加
     this.axiosInstance.interceptors.request.use(
@@ -78,13 +85,21 @@ class MattermostClient {
     try {
       console.log('🔐 ログイン試行:', { login_id: credentials.login_id });
       
-      const response: AxiosResponse<User> = await this.axiosInstance.post('/users/login', credentials);
+      // CSRF保護を回避するためのヘッダーを追加
+      const response: AxiosResponse<User> = await this.axiosInstance.post('/users/login', credentials, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+        }
+      });
       const user = response.data;
       
-      // Mattermostは複数の方法でトークンを返す可能性がある
-      this.token = response.headers['token'] || 
-                   response.headers['Token'] || 
-                   response.headers['authorization']?.replace('Bearer ', '') ||
+      // Mattermostのトークンを取得（ヘッダー名の大文字小文字に注意）
+      this.token = response.headers.token || 
+                   response.headers.Token || 
+                   response.headers['token'] || 
+                   response.headers['Token'] ||
+                   response.headers.authorization?.replace('Bearer ', '') ||
                    (user as any).token;
       
       console.log('📥 レスポンスヘッダー:', response.headers);
@@ -101,18 +116,21 @@ class MattermostClient {
       }
       
       if (!this.token) {
-        console.error('❌ 認証トークンが見つかりません');
+        console.warn('⚠️ 認証トークンが見つかりません - セッションベース認証を使用');
         console.log('利用可能なヘッダー:', Object.keys(response.headers));
         console.log('ユーザーオブジェクトのキー:', user ? Object.keys(user) : 'なし');
+        console.log('📋 全ヘッダー内容:', response.headers);
         
-        // セッションベース認証を試行（トークンがない場合）
-        console.log('🔄 セッションベース認証に切り替え');
-        this.token = 'session-based'; // セッション認証フラグ
+        // セッションベース認証を使用（クッキー認証）
+        this.token = 'session-based';
+        console.log('🍪 セッションベース認証（クッキー）を使用します');
       }
 
       // ローカルストレージに保存
       if (this.token && this.token !== 'session-based') {
         localStorage.setItem('mattermost_token', this.token);
+      } else {
+        localStorage.setItem('mattermost_token', 'session-based');
       }
       localStorage.setItem('mattermost_user', JSON.stringify(user));
 
@@ -178,8 +196,32 @@ class MattermostClient {
 
   // チャンネル関連メソッド
   async getChannelsForTeam(teamId: string): Promise<Channel[]> {
-    const response = await this.axiosInstance.get<Channel[]>(`/teams/${teamId}/channels`);
-    return response.data;
+    try {
+      console.log('📡 チャンネル取得API呼び出し:', { teamId, endpoint: `/teams/${teamId}/channels` });
+      const response = await this.axiosInstance.get<Channel[]>(`/teams/${teamId}/channels`);
+      console.log('✅ チャンネル取得API成功:', { 
+        count: response.data.length,
+        channels: response.data.map(ch => ({ name: ch.display_name || ch.name, type: ch.type }))
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ チャンネル取得API失敗:', error);
+      
+      // フォールバック: 全チャンネルから該当チームのものを取得
+      try {
+        console.log('🔄 フォールバック: 全チャンネル取得を試行');
+        const allChannelsResponse = await this.axiosInstance.get<Channel[]>('/channels');
+        const teamChannels = allChannelsResponse.data.filter(ch => ch.team_id === teamId);
+        console.log('✅ フォールバック成功:', { 
+          totalChannels: allChannelsResponse.data.length,
+          teamChannels: teamChannels.length 
+        });
+        return teamChannels;
+      } catch (fallbackError) {
+        console.error('❌ フォールバックも失敗:', fallbackError);
+        throw error; // 元のエラーを投げる
+      }
+    }
   }
 
   async getChannel(channelId: string): Promise<Channel> {
@@ -238,25 +280,45 @@ class MattermostClient {
 
   // WebSocket関連メソッド
   async connectWebSocket(): Promise<void> {
-    if (!this.token) {
-      console.error('❌ WebSocket接続にはトークンが必要ですが、トークンがありません');
-      throw new Error('WebSocket接続には認証が必要です');
+    // 既存の接続をクリーンアップ
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
     }
 
-    console.log('🔌 WebSocket接続開始:', { token: this.token === 'session-based' ? 'session-based' : 'token-based', url: this.websocketUrl });
+    // トークンがない、またはセッションベース認証の場合
+    if (!this.token || this.token === 'session-based') {
+      console.log('🔌 セッションベース認証でWebSocket接続を試行');
+      return this.connectWebSocketWithSession();
+    }
+
+    console.log('🔌 WebSocket接続開始:', { 
+      hasToken: !!this.token,
+      tokenLength: this.token.length,
+      url: this.websocketUrl 
+    });
 
     return new Promise((resolve, reject) => {
       try {
-        // セッションベース認証の場合は、トークンなしでWebSocket接続を試行
-        const wsUrl = this.token === 'session-based' 
-          ? this.websocketUrl 
-          : `${this.websocketUrl}?token=${this.token}`;
-          
-        console.log('🔗 WebSocket URL:', wsUrl);
+        // トークン付きでWebSocket接続を試行
+        const wsUrl = `${this.websocketUrl}?token=${this.token}`;
+        console.log('🔗 WebSocket接続試行（トークン認証）:', wsUrl.replace(this.token!, '[TOKEN_HIDDEN]'));
+        
         this.websocket = new WebSocket(wsUrl);
 
+        // タイムアウト設定
+        const connectTimeout = setTimeout(() => {
+          if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+            console.warn('⏰ WebSocket接続がタイムアウトしました');
+            this.websocket.close();
+            reject(new Error('WebSocket接続タイムアウト'));
+          }
+        }, 10000); // 10秒タイムアウト
+
         this.websocket.onopen = () => {
-          console.log('✅ WebSocket接続が確立されました');
+          clearTimeout(connectTimeout);
+          console.log('✅ WebSocket接続が確立されました（トークン認証）');
+          
           // 接続成功時にリセット
           this.reconnectionAttempts = 0;
           this.currentBackoffDelay = 1000;
@@ -266,18 +328,38 @@ class MattermostClient {
         this.websocket.onmessage = (event) => {
           try {
             const wsEvent: WebSocketEvent = JSON.parse(event.data);
-            console.log('📨 WebSocketメッセージ受信:', wsEvent.event);
+            console.log('📨 WebSocketメッセージ受信:', wsEvent.event, wsEvent);
+            
+            // 認証成功の確認
+            if (wsEvent.event === 'hello' || wsEvent.status === 'OK') {
+              console.log('✅ WebSocket認証成功');
+            }
+            
             this.handleWebSocketEvent(wsEvent);
           } catch (error) {
             console.error('❌ WebSocketメッセージの解析エラー:', error);
+            console.error('❌ 受信データ:', event.data);
           }
         };
 
         this.websocket.onclose = (event) => {
-          console.log('🔌 WebSocket接続が閉じられました:', { code: event.code, reason: event.reason });
-          // 認証エラー以外の場合は自動再接続
-          if (event.code !== 1000 && event.code !== 4001) { // 正常終了・認証エラー以外の場合
-            const backoffDelay = Math.min(this.currentBackoffDelay, 30000); // 最大遅延は30秒
+          clearTimeout(connectTimeout);
+          console.log('🔌 WebSocket接続が閉じられました:', { 
+            code: event.code, 
+            reason: event.reason,
+            wasClean: event.wasClean 
+          });
+          
+          // コード1006は異常終了、4001は認証エラー
+          if (event.code === 1006) {
+            console.warn('⚠️ WebSocket異常終了 - ネットワークまたはサーバー問題の可能性');
+          } else if (event.code === 4001) {
+            console.error('🔑 WebSocket認証エラー');
+          }
+          
+          // 認証エラー以外で再接続を試行
+          if (event.code !== 1000 && event.code !== 4001 && this.reconnectionAttempts < 3) {
+            const backoffDelay = Math.min(this.currentBackoffDelay, 30000);
             console.log(`🔄 ${backoffDelay / 1000}秒後に再接続を試行します (試行回数: ${this.reconnectionAttempts + 1})`);
             setTimeout(() => {
               if (this.token) {
@@ -285,31 +367,107 @@ class MattermostClient {
                 this.connectWebSocket().catch((err) => {
                   console.error('❌ 再接続失敗:', err);
                 });
-                this.currentBackoffDelay = Math.min(this.currentBackoffDelay * 2, 30000); // 最大遅延は30秒
+                this.currentBackoffDelay = Math.min(this.currentBackoffDelay * 2, 30000);
               }
             }, backoffDelay);
           } else {
-            // 正常終了または認証エラーの場合はリセット
             this.reconnectionAttempts = 0;
             this.currentBackoffDelay = 1000;
           }
         };
 
         this.websocket.onerror = (error) => {
+          clearTimeout(connectTimeout);
           console.error('❌ WebSocketエラー詳細:', {
             message: (error as any)?.message || '不明なエラー',
-            stack: (error as any)?.stack || 'スタックトレースなし',
+            type: (error as any)?.type || 'unknown',
             readyState: this.websocket?.readyState,
             url: this.websocket?.url,
             token: this.token ? 'あり' : 'なし',
             reconnectionAttempts: this.reconnectionAttempts
           });
           
-          // Reject the promise to propagate the error
           reject(new Error(`WebSocket接続エラー: readyState=${this.websocket?.readyState}`));
         };
       } catch (error) {
         console.error('❌ WebSocket接続エラー:', error);
+        reject(error);
+      }
+    });
+  }
+
+  // セッションベース認証でのWebSocket接続
+  private async connectWebSocketWithSession(): Promise<void> {
+    console.log('🔌 セッションベースWebSocket接続試行');
+    
+    return new Promise((resolve, reject) => {
+      try {
+        // セッションベース認証では認証用のクッキーが自動で送信される
+        const wsUrl = this.websocketUrl;
+        console.log('🔗 WebSocket接続試行（セッション認証）:', wsUrl);
+        
+        this.websocket = new WebSocket(wsUrl);
+
+        const connectTimeout = setTimeout(() => {
+          if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+            console.warn('⏰ セッションベースWebSocket接続がタイムアウトしました');
+            this.websocket.close();
+            reject(new Error('セッションベースWebSocket接続タイムアウト'));
+          }
+        }, 15000); // タイムアウトを15秒に延長
+
+        this.websocket.onopen = () => {
+          clearTimeout(connectTimeout);
+          console.log('✅ セッションベースWebSocket接続が確立されました');
+          this.reconnectionAttempts = 0;
+          this.currentBackoffDelay = 1000;
+          resolve();
+        };
+
+        this.websocket.onmessage = (event) => {
+          try {
+            const wsEvent: WebSocketEvent = JSON.parse(event.data);
+            console.log('📨 セッションベースWebSocketメッセージ受信:', wsEvent.event, wsEvent);
+            
+            // hello イベントで接続成功を確認
+            if (wsEvent.event === 'hello') {
+              console.log('👋 WebSocket hello メッセージ受信 - 接続成功');
+            }
+            
+            this.handleWebSocketEvent(wsEvent);
+          } catch (error) {
+            console.error('❌ セッションベースWebSocketメッセージの解析エラー:', error);
+            console.error('❌ 受信データ:', event.data);
+          }
+        };
+
+        this.websocket.onclose = (event) => {
+          clearTimeout(connectTimeout);
+          console.log('🔌 セッションベースWebSocket接続が閉じられました:', { 
+            code: event.code, 
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
+          
+          // 1006は異常終了、1011はサーバーエラー
+          if (event.code === 1006) {
+            console.warn('⚠️ WebSocket異常終了 - サーバー接続問題の可能性');
+          } else if (event.code === 1011) {
+            console.error('🚫 WebSocketサーバーエラー');
+          }
+        };
+
+        this.websocket.onerror = (error) => {
+          clearTimeout(connectTimeout);
+          console.error('❌ セッションベースWebSocketエラー詳細:', {
+            error,
+            readyState: this.websocket?.readyState,
+            url: this.websocket?.url
+          });
+          reject(new Error('セッションベースWebSocket接続エラー'));
+        };
+      } catch (error) {
+        console.error('❌ セッションベースWebSocket接続エラー:', error);
         reject(error);
       }
     });

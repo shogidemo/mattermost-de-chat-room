@@ -9,7 +9,19 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8065',
         changeOrigin: true,
-        secure: false
+        secure: false,
+        ws: true, // WebSocketプロキシを有効化
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.log('プロキシエラー:', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('プロキシリクエスト:', req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('プロキシレスポンス:', req.url, proxyRes.statusCode);
+          });
+        }
       }
     }
   }
