@@ -10,19 +10,72 @@ import {
   Chip,
   Divider,
   Paper,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Tag as PublicIcon,
   Lock as PrivateIcon,
   Person as DirectIcon,
   Group as GroupIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 import { useApp } from '../contexts/AppContext';
-import type { Channel } from '../types/mattermost';
+import type { Channel, ChannelWithPreview } from '../types/mattermost';
 
 const ChannelList: React.FC = () => {
-  const { state, selectChannel } = useApp();
+  const { state, selectChannel, getChannelsWithPreview, filterChannels } = useApp();
   const { channels, currentChannel, currentTeam } = state;
+  const [channelsWithPreview, setChannelsWithPreview] = React.useState<ChannelWithPreview[]>([]);
+  const [isLoadingPreviews, setIsLoadingPreviews] = React.useState(false);
+  const [filterText, setFilterText] = React.useState('佐藤'); // デフォルトで「佐藤」フィルターを適用
+  const [filteredChannels, setFilteredChannels] = React.useState<ChannelWithPreview[]>([]);
+
+  // チャンネルプレビューの読み込み
+  React.useEffect(() => {
+    const loadChannelPreviews = async () => {
+      if (channels.length > 0 && !isLoadingPreviews) {
+        setIsLoadingPreviews(true);
+        try {
+          const previewChannels = await getChannelsWithPreview();
+          setChannelsWithPreview(previewChannels);
+        } catch (error) {
+          console.error('チャンネルプレビュー読み込みエラー:', error);
+          // エラー時は通常のチャンネルデータを使用
+          setChannelsWithPreview(channels.map(ch => ({ ...ch })));
+        } finally {
+          setIsLoadingPreviews(false);
+        }
+      }
+    };
+
+    loadChannelPreviews();
+  }, [channels, getChannelsWithPreview, isLoadingPreviews]);
+
+  // フィルター適用
+  React.useEffect(() => {
+    if (channelsWithPreview.length > 0) {
+      const filtered = filterChannels(channelsWithPreview, filterText);
+      setFilteredChannels(filtered);
+      console.log('🔍 チャンネルフィルター適用:', { 
+        filterText, 
+        totalChannels: channelsWithPreview.length, 
+        filteredChannels: filtered.length,
+        filteredChannelNames: filtered.map(ch => ch.display_name || ch.name)
+      });
+    }
+  }, [channelsWithPreview, filterText, filterChannels]);
+
+  // フィルターテキストの変更ハンドラー
+  const handleFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterText(event.target.value);
+  };
+
+  // フィルタークリア
+  const clearFilter = () => {
+    setFilterText('');
+  };
 
   // チャンネルタイプに応じたアイコンを取得
   const getChannelIcon = (channelType: string) => {
@@ -42,7 +95,7 @@ const ChannelList: React.FC = () => {
 
 
   // チャンネル名の表示用フォーマット
-  const getDisplayName = (channel: Channel) => {
+  const getDisplayName = (channel: ChannelWithPreview) => {
     if (channel.type === 'D') {
       // ダイレクトメッセージの場合、相手のユーザー名を表示
       // 実際の実装では、チャンネル名から現在のユーザーIDを除いて相手を特定
@@ -51,20 +104,47 @@ const ChannelList: React.FC = () => {
     return channel.display_name || channel.name;
   };
 
-  // チャンネルをカテゴリ別に分類
+  // メッセージプレビューの時刻フォーマット
+  const formatPreviewTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) {
+      return '今';
+    } else if (diffMins < 60) {
+      return `${diffMins}分前`;
+    } else if (diffHours < 24) {
+      return `${diffHours}時間前`;
+    } else if (diffDays < 7) {
+      return `${diffDays}日前`;
+    } else {
+      return date.toLocaleDateString('ja-JP', {
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+  };
+
+  // チャンネルをカテゴリ別に分類（フィルター済みチャンネルを使用）
   const categorizeChannels = () => {
+    const channelsToUse = filteredChannels.length > 0 ? filteredChannels : 
+                          channelsWithPreview.length > 0 ? channelsWithPreview : channels;
     const categories = {
-      public: channels.filter(ch => ch.type === 'O'),
-      private: channels.filter(ch => ch.type === 'P'),
-      direct: channels.filter(ch => ch.type === 'D'),
-      group: channels.filter(ch => ch.type === 'G'),
+      public: channelsToUse.filter(ch => ch.type === 'O'),
+      private: channelsToUse.filter(ch => ch.type === 'P'),
+      direct: channelsToUse.filter(ch => ch.type === 'D'),
+      group: channelsToUse.filter(ch => ch.type === 'G'),
     };
     return categories;
   };
 
   const categorizedChannels = categorizeChannels();
 
-  const handleChannelSelect = async (channel: Channel) => {
+  const handleChannelSelect = async (channel: ChannelWithPreview) => {
     try {
       await selectChannel(channel);
     } catch (error) {
@@ -72,7 +152,7 @@ const ChannelList: React.FC = () => {
     }
   };
 
-  const renderChannelCategory = (title: string, channels: Channel[], showDivider = true) => {
+  const renderChannelCategory = (title: string, channels: ChannelWithPreview[], showDivider = true) => {
     if (channels.length === 0) return null;
 
     return (
@@ -116,20 +196,49 @@ const ChannelList: React.FC = () => {
                       >
                         {getDisplayName(channel)}
                       </Typography>
-                      {channel.total_msg_count > 0 && (
+                      {channel.unreadCount && channel.unreadCount > 0 && (
                         <Chip
-                          label={channel.total_msg_count}
+                          label={channel.unreadCount}
                           size="small"
-                          variant="outlined"
-                          sx={{ minWidth: 'auto', height: 20, fontSize: '0.75rem' }}
+                          color="error"
+                          sx={{ 
+                            minWidth: 'auto', 
+                            height: 20, 
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                          }}
                         />
                       )}
                     </Box>
                   }
                   secondary={
-                    channel.purpose && (
+                    channel.lastMessage ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            mr: 1,
+                          }}
+                        >
+                          {channel.lastMessage.userName}: {channel.lastMessage.content}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ whiteSpace: 'nowrap' }}
+                        >
+                          {formatPreviewTime(channel.lastMessage.timestamp)}
+                        </Typography>
+                      </Box>
+                    ) : channel.purpose ? (
                       <Typography
                         variant="caption"
+                        color="text.secondary"
                         sx={{
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -138,6 +247,14 @@ const ChannelList: React.FC = () => {
                         }}
                       >
                         {channel.purpose}
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontStyle: 'italic' }}
+                      >
+                        メッセージがありません
                       </Typography>
                     )
                   }
@@ -171,6 +288,45 @@ const ChannelList: React.FC = () => {
         <Typography variant="caption" color="text.secondary">
           {channels.length} チャンネル
         </Typography>
+      </Box>
+
+      {/* チャンネルフィルター */}
+      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="チャンネルを検索..."
+          value={filterText}
+          onChange={handleFilterChange}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: filterText && (
+              <InputAdornment position="end">
+                <ClearIcon 
+                  fontSize="small" 
+                  sx={{ cursor: 'pointer' }} 
+                  onClick={clearFilter}
+                />
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              '& fieldset': {
+                borderColor: 'divider',
+              },
+            },
+          }}
+        />
+        {filterText && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            「{filterText}」で絞り込み中 ({Object.values(categorizedChannels).flat().length}件)
+          </Typography>
+        )}
       </Box>
 
       {/* チャンネル一覧 */}

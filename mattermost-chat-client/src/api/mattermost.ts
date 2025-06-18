@@ -271,6 +271,23 @@ class MattermostClient {
     return response.data;
   }
 
+  // チャンネルの最新メッセージを取得
+  async getLatestPostForChannel(channelId: string): Promise<Post | null> {
+    try {
+      const response = await this.axiosInstance.get(
+        `/channels/${channelId}/posts?page=0&per_page=1`
+      );
+      const { order, posts } = response.data;
+      if (order.length > 0 && posts[order[0]]) {
+        return posts[order[0]];
+      }
+      return null;
+    } catch (error) {
+      console.warn(`チャンネル ${channelId} の最新メッセージ取得に失敗:`, error);
+      return null;
+    }
+  }
+
   async createPost(postData: CreatePostRequest): Promise<Post> {
     const response = await this.axiosInstance.post<Post>('/posts', postData);
     return response.data;
