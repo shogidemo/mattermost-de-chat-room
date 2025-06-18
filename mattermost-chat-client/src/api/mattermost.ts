@@ -39,11 +39,13 @@ class MattermostClient {
 
     // WebSocket URL の設定
     if (import.meta.env.DEV) {
-      // 開発環境ではViteプロキシ経由でWebSocket接続
-      this.websocketUrl = `ws://localhost:5173/api/v4/websocket`;
+      // 開発環境では直接Mattermostサーバーに接続（プロキシ経由ではなく）
+      const mattermostUrl = import.meta.env.VITE_MATTERMOST_URL || 'http://localhost:8065';
+      this.websocketUrl = import.meta.env.VITE_WEBSOCKET_DEV_URL || mattermostUrl.replace('http', 'ws') + '/api/v4/websocket';
+      console.log('🔧 開発環境WebSocket URL設定:', this.websocketUrl);
     } else {
       // 本番環境では直接接続
-      const wsBaseURL = baseURL || 'http://localhost:8065';
+      const wsBaseURL = baseURL || import.meta.env.VITE_MATTERMOST_URL || 'http://localhost:8065';
       this.websocketUrl = wsBaseURL.replace('http', 'ws') + '/api/v4/websocket';
     }
 
@@ -161,13 +163,20 @@ class MattermostClient {
     
     if (token && userStr) {
       this.token = token;
+      console.log('🔄 セッション復元:', { 
+        tokenType: token === 'session-based' ? 'session' : 'bearer',
+        tokenLength: token.length 
+      });
       try {
-        return JSON.parse(userStr);
+        const user = JSON.parse(userStr);
+        console.log('✅ ユーザー情報復元成功:', user.username);
+        return user;
       } catch (error) {
-        console.error('ユーザー情報の復元に失敗:', error);
+        console.error('❌ ユーザー情報の復元に失敗:', error);
         this.clearSession();
       }
     }
+    console.log('⚠️ 保存されたセッションが見つかりません');
     return null;
   }
 
@@ -280,8 +289,17 @@ class MattermostClient {
 
   // WebSocket関連メソッド
   async connectWebSocket(): Promise<void> {
+    console.log('🔌 WebSocket接続開始 - 詳細ログ:', { 
+      websocketUrl: this.websocketUrl,
+      hasToken: !!this.token,
+      tokenLength: this.token?.length || 0,
+      tokenType: this.token === 'session-based' ? 'session' : this.token ? 'bearer' : 'none',
+      env: import.meta.env.DEV ? 'development' : 'production'
+    });
+    
     // 既存の接続をクリーンアップ
     if (this.websocket) {
+      console.log('🧹 既存WebSocket接続をクリーンアップ');
       this.websocket.close();
       this.websocket = null;
     }
@@ -292,7 +310,7 @@ class MattermostClient {
       return this.connectWebSocketWithSession();
     }
 
-    console.log('🔌 WebSocket接続開始:', { 
+    console.log('🔌 トークンベース認証でWebSocket接続開始:', { 
       hasToken: !!this.token,
       tokenLength: this.token.length,
       url: this.websocketUrl 
@@ -300,11 +318,10 @@ class MattermostClient {
 
     return new Promise((resolve, reject) => {
       try {
-        // トークン付きでWebSocket接続を試行
-        const wsUrl = `${this.websocketUrl}?token=${this.token}`;
-        console.log('🔗 WebSocket接続試行（トークン認証）:', wsUrl.replace(this.token!, '[TOKEN_HIDDEN]'));
+        // WebSocket接続を確立（認証はあとで送信）
+        console.log('🔗 WebSocket接続試行:', this.websocketUrl);
         
-        this.websocket = new WebSocket(wsUrl);
+        this.websocket = new WebSocket(this.websocketUrl);
 
         // タイムアウト設定
         const connectTimeout = setTimeout(() => {
@@ -317,25 +334,62 @@ class MattermostClient {
 
         this.websocket.onopen = () => {
           clearTimeout(connectTimeout);
-          console.log('✅ WebSocket接続が確立されました（トークン認証）');
+          console.log('✅ WebSocket接続が確立されました');
+          console.log('🔗 WebSocket接続詳細:', {
+            url: this.websocket?.url,
+            readyState: this.websocket?.readyState,
+            protocol: this.websocket?.protocol
+          });
+          
+          // Mattermost WebSocket認証チャレンジを送信
+          console.log('🔑 認証チャレンジ送信中...', { tokenType: this.token === 'session-based' ? 'session' : 'bearer' });
+          const authChallenge = {
+            seq: 1,
+            action: 'authentication_challenge',
+            data: {
+              token: this.token === 'session-based' ? '' : this.token
+            }
+          };
+          console.log('📤 認証チャレンジ送信:', authChallenge);
+          this.websocket!.send(JSON.stringify(authChallenge));
+          console.log('📤 認証チャレンジ送信完了');
           
           // 接続成功時にリセット
           this.reconnectionAttempts = 0;
           this.currentBackoffDelay = 1000;
-          resolve();
+          // resolve()は認証成功後に実行
         };
 
         this.websocket.onmessage = (event) => {
           try {
-            const wsEvent: WebSocketEvent = JSON.parse(event.data);
-            console.log('📨 WebSocketメッセージ受信:', wsEvent.event, wsEvent);
+            const wsData = JSON.parse(event.data);
+            console.log('📨 WebSocketメッセージ受信:', wsData);
             
-            // 認証成功の確認
-            if (wsEvent.event === 'hello' || wsEvent.status === 'OK') {
-              console.log('✅ WebSocket認証成功');
+            // 認証チャレンジの応答を確認
+            if (wsData.seq_reply === 1) {
+              if (wsData.status === 'OK') {
+                console.log('✅ WebSocket認証成功');
+                resolve();
+                return;
+              } else if (wsData.error) {
+                console.error('❌ WebSocket認証エラー:', wsData.error);
+                reject(new Error(`WebSocket認証失敗: ${wsData.error.message || JSON.stringify(wsData.error)}`));
+                return;
+              }
             }
             
-            this.handleWebSocketEvent(wsEvent);
+            // 通常のイベント処理
+            if (wsData.event) {
+              const wsEvent: WebSocketEvent = wsData;
+              console.log('📨 WebSocketイベント:', wsEvent.event);
+              
+              // helloイベントの確認
+              if (wsEvent.event === 'hello') {
+                console.log('👋 WebSocket hello メッセージ受信');
+              }
+              
+              this.handleWebSocketEvent(wsEvent);
+            }
           } catch (error) {
             console.error('❌ WebSocketメッセージの解析エラー:', error);
             console.error('❌ 受信データ:', event.data);
@@ -379,15 +433,33 @@ class MattermostClient {
         this.websocket.onerror = (error) => {
           clearTimeout(connectTimeout);
           console.error('❌ WebSocketエラー詳細:', {
-            message: (error as any)?.message || '不明なエラー',
-            type: (error as any)?.type || 'unknown',
+            error: error,
+            errorMessage: (error as any)?.message || '不明なエラー',
+            errorType: (error as any)?.type || 'unknown',
             readyState: this.websocket?.readyState,
+            readyStateText: this.websocket ? {
+              0: 'CONNECTING',
+              1: 'OPEN',
+              2: 'CLOSING',
+              3: 'CLOSED'
+            }[this.websocket.readyState] : 'NO_WEBSOCKET',
             url: this.websocket?.url,
-            token: this.token ? 'あり' : 'なし',
-            reconnectionAttempts: this.reconnectionAttempts
+            websocketUrl: this.websocketUrl,
+            hasToken: !!this.token,
+            tokenType: this.token === 'session-based' ? 'session' : this.token ? 'bearer' : 'none',
+            reconnectionAttempts: this.reconnectionAttempts,
+            timestamp: new Date().toISOString()
           });
           
-          reject(new Error(`WebSocket接続エラー: readyState=${this.websocket?.readyState}`));
+          // ブラウザの詳細情報も出力
+          console.error('🌐 ブラウザ環境詳細:', {
+            userAgent: navigator.userAgent,
+            onLine: navigator.onLine,
+            language: navigator.language,
+            cookieEnabled: navigator.cookieEnabled
+          });
+          
+          reject(new Error(`WebSocket接続エラー: ${(error as any)?.message || 'unknown'} (readyState=${this.websocket?.readyState})`));
         };
       } catch (error) {
         console.error('❌ WebSocket接続エラー:', error);
@@ -403,10 +475,9 @@ class MattermostClient {
     return new Promise((resolve, reject) => {
       try {
         // セッションベース認証では認証用のクッキーが自動で送信される
-        const wsUrl = this.websocketUrl;
-        console.log('🔗 WebSocket接続試行（セッション認証）:', wsUrl);
+        console.log('🔗 WebSocket接続試行（セッション認証）:', this.websocketUrl);
         
-        this.websocket = new WebSocket(wsUrl);
+        this.websocket = new WebSocket(this.websocketUrl);
 
         const connectTimeout = setTimeout(() => {
           if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
@@ -419,22 +490,56 @@ class MattermostClient {
         this.websocket.onopen = () => {
           clearTimeout(connectTimeout);
           console.log('✅ セッションベースWebSocket接続が確立されました');
-          this.reconnectionAttempts = 0;
-          this.currentBackoffDelay = 1000;
-          resolve();
+          
+          // セッションベース認証の場合も認証チャレンジを試行
+          if (this.token && this.token !== 'session-based') {
+            console.log('🔑 セッションベース認証でも認証チャレンジ送信を試行');
+            const authChallenge = {
+              seq: 1,
+              action: 'authentication_challenge',
+              data: {
+                token: this.token
+              }
+            };
+            this.websocket!.send(JSON.stringify(authChallenge));
+          } else {
+            console.log('🍪 クッキーベース認証のみで接続');
+            // クッキー認証の場合は、すぐに接続成功とする
+            this.reconnectionAttempts = 0;
+            this.currentBackoffDelay = 1000;
+            // helloメッセージを待つ
+          }
         };
 
+        let helloReceived = false;
         this.websocket.onmessage = (event) => {
           try {
-            const wsEvent: WebSocketEvent = JSON.parse(event.data);
-            console.log('📨 セッションベースWebSocketメッセージ受信:', wsEvent.event, wsEvent);
+            const wsData = JSON.parse(event.data);
+            console.log('📨 セッションベースWebSocketメッセージ受信:', wsData);
             
-            // hello イベントで接続成功を確認
-            if (wsEvent.event === 'hello') {
-              console.log('👋 WebSocket hello メッセージ受信 - 接続成功');
+            // 認証チャレンジの応答を確認（送信した場合）
+            if (wsData.status === 'OK' && wsData.seq_reply === 1) {
+              console.log('✅ セッションベース認証チャレンジ成功');
+              if (!helloReceived) {
+                resolve();
+                helloReceived = true;
+              }
+              return;
             }
             
-            this.handleWebSocketEvent(wsEvent);
+            // 通常のイベント処理
+            if (wsData.event) {
+              const wsEvent: WebSocketEvent = wsData;
+              
+              // hello イベントで接続成功を確認
+              if (wsEvent.event === 'hello' && !helloReceived) {
+                console.log('👋 WebSocket hello メッセージ受信 - 接続成功');
+                helloReceived = true;
+                resolve();
+              }
+              
+              this.handleWebSocketEvent(wsEvent);
+            }
           } catch (error) {
             console.error('❌ セッションベースWebSocketメッセージの解析エラー:', error);
             console.error('❌ 受信データ:', event.data);
@@ -515,6 +620,34 @@ class MattermostClient {
   // WebSocket接続状態の確認
   isWebSocketConnected(): boolean {
     return this.websocket?.readyState === WebSocket.OPEN;
+  }
+
+  // WebSocket接続状態の詳細を取得
+  getWebSocketStatus(): {
+    connected: boolean;
+    readyState: number | null;
+    readyStateText: string;
+    url: string | null;
+    hasToken: boolean;
+    tokenType: string;
+    reconnectionAttempts: number;
+  } {
+    const readyStateMap: { [key: number]: string } = {
+      0: 'CONNECTING',
+      1: 'OPEN',
+      2: 'CLOSING',
+      3: 'CLOSED'
+    };
+    
+    return {
+      connected: this.isWebSocketConnected(),
+      readyState: this.websocket?.readyState ?? null,
+      readyStateText: this.websocket ? readyStateMap[this.websocket.readyState] || 'UNKNOWN' : 'NO_WEBSOCKET',
+      url: this.websocket?.url ?? null,
+      hasToken: !!this.token,
+      tokenType: this.token === 'session-based' ? 'session' : this.token ? 'bearer' : 'none',
+      reconnectionAttempts: this.reconnectionAttempts
+    };
   }
 
   // ファイルアップロード

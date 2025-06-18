@@ -229,15 +229,53 @@ interface AppProviderProps {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const client = useMemo(() => new MattermostClient(), []);
+  
+  // グローバル状態へのアクセスを提供（ポーリング用）
+  React.useEffect(() => {
+    (window as any).__mattermostAppState = state;
+    return () => {
+      delete (window as any).__mattermostAppState;
+    };
+  }, [state]);
 
-  // セッション復元の試行
+  // セッション復元の試行（1回のみ実行）
   useEffect(() => {
     const user = client.restoreSession();
     if (user) {
       dispatch({ type: 'SET_USER', payload: user });
       
-      // WebSocket接続を試行
-      connectWebSocket();
+      // 認証確認後にWebSocket接続を試行
+      const initializeConnection = async () => {
+        try {
+          console.log('🔄 セッション復元後のWebSocket接続初期化開始');
+          
+          // 認証状態を確認
+          const currentUser = await client.getCurrentUser();
+          console.log('✅ セッション復元認証確認成功:', currentUser.username);
+          
+          // WebSocket接続を強制実行
+          console.log('🔌 セッション復元後WebSocket接続試行開始...');
+          console.log('🔍 セッション復元時の認証状態:', {
+            hasToken: !!client.getToken(),
+            tokenType: client.getToken() === 'session-based' ? 'session' : 'bearer',
+            isAuthenticated: client.isAuthenticated()
+          });
+          
+          await connectWebSocket();
+          console.log('✅ セッション復元後WebSocket接続成功');
+        } catch (error) {
+          console.error('❌ セッション復元WebSocket接続エラー詳細:', {
+            message: (error as any)?.message,
+            stack: (error as any)?.stack,
+            name: (error as any)?.name
+          });
+          console.warn('⚠️ セッション復元時認証確認失敗またはWebSocket接続失敗 - ポーリングにフォールバック');
+          // 認証失敗時はWebSocketをスキップしてポーリングのみ使用
+          startMessagePolling();
+        }
+      };
+      
+      initializeConnection();
       
       // セッション復元時に自動でチーム・チャンネル情報を取得
       const initializeUserData = async () => {
@@ -291,60 +329,74 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       
       initializeUserData();
     }
-  }, []);
+  }, []); // 依存配列を空にして1回のみ実行
+
+  // ポーリング重複防止用のフラグ
+  const pollingActiveRef = React.useRef(false);
+  const pollingIntervalRef = React.useRef<number | null>(null);
+  const pollingStoppingRef = React.useRef(false); // ポーリング停止中フラグを追加
 
   // メッセージポーリング機能
-  const startMessagePolling = () => {
-    // 既にポーリングが動作中の場合は停止して新しく開始
+  const startMessagePolling = React.useCallback(() => {
+    // ポーリング停止処理中の場合は開始を遅延
+    if (pollingStoppingRef.current) {
+      console.log('⏳ ポーリング停止中 - 開始を遅延');
+      setTimeout(() => startMessagePolling(), 200);
+      return;
+    }
+    
+    // 既にポーリングが動作中の場合は何もしない
+    if (pollingActiveRef.current || pollingIntervalRef.current) {
+      console.log('🚫 ポーリング既に動作中 - 重複開始を防止');
+      return;
+    }
+    
+    // 既存のポーリングを確実に停止
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
     if ((window as any).stopMessagePolling) {
       (window as any).stopMessagePolling();
     }
     
+    pollingActiveRef.current = true;
     console.log('📨 メッセージポーリング開始（2秒間隔）');
     
     const pollMessages = async () => {
+      // 現在の状態を取得（クロージャの問題を回避）
+      const currentState = (window as any).__mattermostAppState || state;
       try {
-        if (state.currentChannel && state.user) {
-          console.log('🔍 ポーリング実行中:', {
-            channelId: state.currentChannel.id.substring(0, 8),
-            channelName: state.currentChannel.display_name || state.currentChannel.name,
-            userId: state.user.id.substring(0, 8)
-          });
-          
+        if (currentState.currentChannel && currentState.user) {
           // 現在のチャンネルの最新メッセージを取得
-          const response = await client.getPostsForChannel(state.currentChannel.id, 0, 15);
+          const response = await client.getPostsForChannel(currentState.currentChannel.id, 0, 30);
           const latestPosts = response.order.map(postId => response.posts[postId]);
           
-          console.log('📊 API応答:', {
-            orderCount: response.order.length,
-            latestPostsCount: latestPosts.length,
-            latestMessages: latestPosts.slice(0, 3).map(p => p.message.substring(0, 15))
-          });
+          // 既存のメッセージと比較
+          const existingPosts = currentState.posts[currentState.currentChannel.id] || [];
+          const existingPostIds = new Set(existingPosts.map((p: Post) => p.id));
           
-          // 既存のメッセージと比較して新しいメッセージのみ追加
-          const existingPosts = state.posts[state.currentChannel.id] || [];
-          const existingPostIds = new Set(existingPosts.map(p => p.id));
-          
+          // 新しいメッセージを抽出
           const newPosts = latestPosts.filter(post => !existingPostIds.has(post.id));
           
-          if (newPosts.length > 0) {
-            console.log('📨 ポーリング: 新しいメッセージを発見:', newPosts.length, newPosts.map(p => p.message.substring(0, 20)));
-            console.log('🆕 新しいメッセージ詳細:', newPosts.map(p => ({
-              id: p.id.substring(0, 8),
-              message: p.message,
-              user_id: p.user_id,
-              create_at: new Date(p.create_at).toLocaleString()
-            })));
-            // 時系列順にソートして追加
-            newPosts.sort((a, b) => a.create_at - b.create_at).forEach(post => {
-              console.log('➕ メッセージ追加:', post.message, 'チャンネル:', state.currentChannel!.id.substring(0, 8));
-              dispatch({
-                type: 'ADD_POST',
-                payload: { channelId: state.currentChannel!.id, post },
-              });
+          // 削除されたメッセージを検出
+          const latestPostIds = new Set(latestPosts.map((p: Post) => p.id));
+          const deletedPosts = existingPosts.filter((post: Post) => !latestPostIds.has(post.id));
+          
+          if (newPosts.length > 0 || deletedPosts.length > 0) {
+            console.log('📨 ポーリング: 変更を検出', {
+              新規: newPosts.length,
+              削除: deletedPosts.length
             });
-          } else {
-            console.log('📭 ポーリング: 新しいメッセージなし (既存:', existingPosts.length, '件, 最新:', latestPosts.length, '件)');
+            
+            // 完全なメッセージリストを設定（全体を更新）
+            dispatch({
+              type: 'SET_POSTS',
+              payload: { 
+                channelId: currentState.currentChannel.id, 
+                posts: latestPosts.sort((a, b) => a.create_at - b.create_at)
+              },
+            });
           }
         }
       } catch (error) {
@@ -355,25 +407,43 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     // 初回実行
     pollMessages();
     
-    // 2秒間隔でポーリング（より高速化）
-    const pollingInterval = setInterval(pollMessages, 2000);
+    // 2秒間隔でポーリング
+    pollingIntervalRef.current = setInterval(pollMessages, 2000);
     
     // クリーンアップ関数を保存
     (window as any).stopMessagePolling = () => {
       console.log('⏹️ メッセージポーリング停止');
-      clearInterval(pollingInterval);
+      pollingStoppingRef.current = true;
+      pollingActiveRef.current = false;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
       delete (window as any).stopMessagePolling;
+      // 停止処理完了を示すため少し遅延
+      setTimeout(() => {
+        pollingStoppingRef.current = false;
+      }, 100);
     };
     
-    return pollingInterval;
-  };
+    return pollingIntervalRef.current;
+  }, [client]); // 依存関係を最小化してcallbackの再生成を防ぐ
 
   // WebSocket接続
   const connectWebSocket = async () => {
     try {
-      console.log('🔌 WebSocket接続試行開始');
+      console.log('🔌 [DETAILED] AppContext.connectWebSocket: WebSocket接続試行開始');
+      console.log('🔍 [DETAILED] 現在の認証状態:', {
+        hasToken: !!client.getToken(),
+        token: client.getToken(),
+        tokenType: client.getToken() === 'session-based' ? 'session' : 'bearer',
+        isAuthenticated: client.isAuthenticated(),
+        currentUser: state.user?.username || 'unknown'
+      });
+      
+      console.log('📞 [DETAILED] client.connectWebSocket() 呼び出し開始...');
       await client.connectWebSocket();
-      console.log('✅ WebSocket接続成功');
+      console.log('✅ [DETAILED] AppContext.connectWebSocket: WebSocket接続成功');
       dispatch({ type: 'SET_CONNECTED', payload: true });
       
       // WebSocket成功時はポーリング停止
@@ -384,11 +454,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       // WebSocketイベントハンドラーの設定
       setupWebSocketHandlers();
     } catch (error) {
-      console.error('❌ WebSocket接続エラー:', error);
+      console.error('❌ AppContext.connectWebSocket: WebSocket接続エラー詳細:', {
+        error: error,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack,
+        name: (error as any)?.name
+      });
       dispatch({ type: 'SET_CONNECTED', payload: false });
       
       // WebSocket接続失敗時はポーリングにフォールバック
-      console.log('🔄 WebSocket接続失敗 - ポーリング機能を開始します');
+      console.log('🔄 AppContext.connectWebSocket: WebSocket接続失敗 - ポーリング機能を開始します');
       startMessagePolling();
       
       // 認証エラーの場合は再ログインが必要
@@ -406,8 +481,27 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     // 新しい投稿の受信
     client.onWebSocketEvent('posted', (event: WebSocketEvent) => {
       try {
-        console.log('📨 WebSocketイベント受信:', { eventType: 'posted', data: event.data });
-        const post = JSON.parse(event.data.post);
+        console.log('📨 WebSocketイベント受信 (posted):', event);
+        console.log('📊 イベントデータ構造:', {
+          hasData: !!event.data,
+          dataKeys: event.data ? Object.keys(event.data) : [],
+          dataType: typeof event.data,
+          rawData: event.data
+        });
+        
+        // postデータの取得を試行
+        let post;
+        if (event.data && typeof event.data.post === 'string') {
+          post = JSON.parse(event.data.post);
+          console.log('📝 文字列からpostをパース成功');
+        } else if (event.data && event.data.post && typeof event.data.post === 'object') {
+          post = event.data.post;
+          console.log('📝 postオブジェクトを直接使用');
+        } else {
+          console.error('❌ postデータが見つかりません:', event.data);
+          return;
+        }
+        
         console.log('📨 Mattermostから新しい投稿受信:', { 
           channelId: post.channel_id, 
           message: post.message,
@@ -431,6 +525,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       } catch (error) {
         console.error('❌ 投稿イベント処理エラー:', error);
         console.error('❌ イベントデータ:', event);
+        console.error('❌ エラースタック:', (error as Error).stack);
       }
     });
 
@@ -480,8 +575,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         type: event.event, 
         seq: event.seq,
         broadcast: event.broadcast,
-        hasData: !!event.data
+        hasData: !!event.data,
+        dataKeys: event.data ? Object.keys(event.data) : [],
+        eventData: event
       });
+      
+      // 特定のイベントタイプの詳細ログ
+      if (event.event === 'posted' || event.event === 'post_edited' || event.event === 'post_deleted') {
+        console.log('📮 投稿関連イベント詳細:', {
+          eventType: event.event,
+          channelId: event.broadcast?.channel_id,
+          userId: event.broadcast?.user_id,
+          dataStructure: event.data
+        });
+      }
     });
 
     console.log('✅ WebSocketイベントハンドラー設定完了');
@@ -500,12 +607,38 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
       dispatch({ type: 'SET_USER', payload: loginResponse.user });
       
-      // WebSocket接続（失敗しても続行）
-      try {
-        await connectWebSocket();
-      } catch (error) {
-        console.warn('⚠️ WebSocket接続に失敗しましたが、HTTP APIでチャット機能は利用可能です:', error);
-      }
+      // ログイン成功後にWebSocket接続を強制実行
+      console.log('📋 [FORCE] ログイン成功 - WebSocket接続を強制実行', {
+        hasToken: !!client.getToken(),
+        tokenType: client.getToken() === 'session-based' ? 'session' : 'bearer',
+        isAuthenticated: client.isAuthenticated(),
+        userId: loginResponse.user.id,
+        username: loginResponse.user.username
+      });
+      
+      // 少し待ってからWebSocket接続を確実に実行
+      setTimeout(async () => {
+        console.log('🔌 [FORCE] ログイン後WebSocket接続を遅延実行開始');
+        try {
+          await connectWebSocket();
+          console.log('✅ [FORCE] ログイン後WebSocket接続成功');
+        } catch (error) {
+          console.error('❌ [FORCE] ログイン後WebSocket接続失敗:', error);
+          console.warn('⚠️ WebSocket接続に失敗しましたが、HTTP APIでチャット機能は利用可能です');
+          // WebSocket失敗時は即座にポーリング開始
+          console.log('🔄 WebSocket失敗のため、即座にポーリング開始');
+          const startFallbackPolling = async () => {
+            if ((window as any).stopMessagePolling) {
+              (window as any).stopMessagePolling();
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            pollingActiveRef.current = false;
+            pollingIntervalRef.current = null;
+            startMessagePolling();
+          };
+          startFallbackPolling();
+        }
+      }, 1000); // 1秒後に実行
 
       // ユーザーの所属チームを取得
       const teams = await client.getTeamsForUser(loginResponse.user.id);
@@ -514,12 +647,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       }
       
       // ログイン完了後にポーリング確認（WebSocket失敗時の保険）
+      // WebSocket接続に失敗する可能性があるため、3秒後に確認
       setTimeout(() => {
-        if (!client.isWebSocketConnected() && typeof (window as any).stopMessagePolling !== 'function') {
-          console.log('🔄 ログイン完了後にポーリング開始（保険）');
-          startMessagePolling();
+        if (!client.isWebSocketConnected() && !pollingActiveRef.current) {
+          console.log('⚠️ WebSocket未接続 - ポーリングモードで動作開始');
+          // 既存のポーリングを安全に停止してから開始
+          const startLoginFallbackPolling = async () => {
+            if ((window as any).stopMessagePolling) {
+              (window as any).stopMessagePolling();
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            pollingActiveRef.current = false;
+            pollingIntervalRef.current = null;
+            startMessagePolling();
+          };
+          startLoginFallbackPolling();
+        } else {
+          console.log('✅ WebSocket接続済みまたはポーリング動作中 - 追加アクション不要');
         }
-      }, 2000);
+      }, 3000);
     } catch (error) {
       console.error('ログインエラー:', error);
       dispatch({
@@ -616,10 +762,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       dispatch({ type: 'SET_CURRENT_CHANNEL', payload: channel });
       await loadChannelPosts(channel.id);
       
-      // チャンネル選択時にポーリングが動作していない場合は開始
-      if (!client.isWebSocketConnected() && typeof (window as any).stopMessagePolling !== 'function') {
+      // チャンネル選択時にWebSocketが未接続の場合はポーリング開始
+      if (!client.isWebSocketConnected()) {
         console.log('🔄 チャンネル選択時にポーリング開始');
-        startMessagePolling();
+        // 既存のポーリングを安全に停止してから新しく開始
+        const stopCurrentPolling = async () => {
+          if ((window as any).stopMessagePolling) {
+            (window as any).stopMessagePolling();
+          }
+          // ポーリング停止が完了するまで待機
+          await new Promise(resolve => setTimeout(resolve, 200));
+          // フラグをリセット
+          pollingActiveRef.current = false;
+          pollingIntervalRef.current = null;
+          // 新しいポーリングを開始
+          startMessagePolling();
+        };
+        stopCurrentPolling();
       }
     } catch (error) {
       console.error('チャンネル選択エラー:', error);
@@ -736,6 +895,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         // 認証情報をクリア
         client.clearSession();
         dispatch({ type: 'SET_USER', payload: null });
+        // ポーリングも停止
+        if ((window as any).stopMessagePolling) {
+          (window as any).stopMessagePolling();
+        }
       }
       
       throw error;
@@ -822,11 +985,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         },
         testWebSocket: () => {
           console.log('🔌 WebSocket診断開始');
-          console.log('- 接続状態:', client.isWebSocketConnected());
-          console.log('- 認証トークン:', !!client.getToken());
+          const status = client.getWebSocketStatus();
+          console.log('📊 WebSocket状態詳細:', status);
+          console.log('- 接続状態:', status.connected ? '✅ 接続中' : '❌ 未接続');
+          console.log('- ReadyState:', `${status.readyState} (${status.readyStateText})`);
+          console.log('- WebSocket URL:', status.url || '未設定');
+          console.log('- 認証タイプ:', status.tokenType);
+          console.log('- 再接続試行数:', status.reconnectionAttempts);
           console.log('- アプリ接続状態:', state.isConnected);
           
-          if (!client.isWebSocketConnected()) {
+          if (!status.connected) {
             console.log('🔄 WebSocket再接続を試行');
             connectWebSocket();
           }
@@ -834,11 +1002,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         testPolling: () => {
           console.log('📨 ポーリング診断開始');
           console.log('- ポーリング関数存在:', typeof (window as any).stopMessagePolling);
+          console.log('- ポーリングアクティブ:', pollingActiveRef.current);
+          console.log('- ポーリングインターバル:', !!pollingIntervalRef.current);
           console.log('- 現在のチャンネル:', state.currentChannel?.display_name || state.currentChannel?.name);
           console.log('- 現在のユーザー:', state.user?.username);
           console.log('- 既存メッセージ数:', state.posts[state.currentChannel?.id || '']?.length || 0);
           
-          if (typeof (window as any).stopMessagePolling === 'function') {
+          if (pollingActiveRef.current && pollingIntervalRef.current) {
             console.log('✅ ポーリング動作中');
           } else {
             console.log('❌ ポーリング未動作 - 手動開始');
@@ -855,10 +1025,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         },
         startPollingNow: () => {
           console.log('🚀 緊急ポーリング開始');
-          if ((window as any).stopMessagePolling) {
-            (window as any).stopMessagePolling();
-          }
-          startMessagePolling();
+          // 現在のポーリングを安全に停止
+          const emergencyStartPolling = async () => {
+            if ((window as any).stopMessagePolling) {
+              (window as any).stopMessagePolling();
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            pollingActiveRef.current = false;
+            pollingIntervalRef.current = null;
+            startMessagePolling();
+          };
+          emergencyStartPolling();
         },
         refreshChannels: refreshChannels,
         forceChannelRefresh: async () => {
