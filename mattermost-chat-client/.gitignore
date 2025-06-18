@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test results and reports
+test-results/
+playwright-report/
+.env
+
+# Build and development artifacts
+.vite/

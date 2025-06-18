@@ -102,6 +102,7 @@ const LoginForm: React.FC = () => {
             <Box component="form" onSubmit={handleSubmit}>
               <TextField
                 fullWidth
+                name="username"
                 label="ユーザー名またはメールアドレス"
                 variant="outlined"
                 value={formData.username}
@@ -116,6 +117,7 @@ const LoginForm: React.FC = () => {
 
               <TextField
                 fullWidth
+                name="password"
                 label="パスワード"
                 type="password"
                 variant="outlined"
