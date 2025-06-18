@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket接続テスト</title>
+</head>
+<body>
+    <h1>WebSocket接続テスト</h1>
+    <div id="log"></div>
+    
+    <script>
+        const log = (message) => {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+            console.log(message);
+        };
+        
+        log('WebSocket接続テスト開始');
+        
+        // 直接WebSocket接続テスト
+        try {
+            log('ws://localhost:8065/api/v4/websocket への接続を試行...');
+            const ws = new WebSocket('ws://localhost:8065/api/v4/websocket');
+            
+            ws.onopen = () => {
+                log('✅ WebSocket接続成功！');
+                log('認証チャレンジを送信...');
+                ws.send(JSON.stringify({
+                    seq: 1,
+                    action: 'authentication_challenge',
+                    data: { token: '' }
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                log('📨 メッセージ受信: ' + event.data);
+            };
+            
+            ws.onerror = (error) => {
+                log('❌ WebSocketエラー: ' + error);
+            };
+            
+            ws.onclose = (event) => {
+                log(`🔌 WebSocket切断: code=${event.code}, reason=${event.reason}`);
+            };
+            
+        } catch (error) {
+            log('❌ WebSocket作成エラー: ' + error.message);
+        }
+        
+        // HTTP API疎通確認
+        fetch('http://localhost:8065/api/v4/system/ping')
+            .then(response => response.json())
+            .then(data => {
+                log('✅ Mattermost HTTP API疎通成功: ' + JSON.stringify(data));
+            })
+            .catch(error => {
+                log('❌ Mattermost HTTP API疎通失敗: ' + error.message);
+            });
+    </script>
+</body>
+</html>
