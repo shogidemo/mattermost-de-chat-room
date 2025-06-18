@@ -100,6 +100,7 @@ const getInitialState = (): AppState => {
     currentChannel: restoredSelection.channel,
     channels: restoredChannels,
     posts: restorePostsFromStorage(),
+    users: {}, // ユーザー情報キャッシュを初期化
     isLoading: false,
     error: null,
     isConnected: false,
@@ -120,7 +121,9 @@ type AppAction =
   | { type: 'ADD_POST'; payload: { channelId: string; post: Post } }
   | { type: 'UPDATE_POST'; payload: { channelId: string; post: Post } }
   | { type: 'DELETE_POST'; payload: { channelId: string; postId: string } }
-  | { type: 'SET_CONNECTED'; payload: boolean };
+  | { type: 'SET_CONNECTED'; payload: boolean }
+  | { type: 'CACHE_USER'; payload: User }
+  | { type: 'CACHE_USERS'; payload: User[] };
 
 // リデューサー関数
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -199,6 +202,24 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'SET_CONNECTED':
       return { ...state, isConnected: action.payload };
+    case 'CACHE_USER':
+      return {
+        ...state,
+        users: {
+          ...state.users,
+          [action.payload.id]: action.payload,
+        },
+      };
+    case 'CACHE_USERS': {
+      const newUsers = { ...state.users };
+      action.payload.forEach(user => {
+        newUsers[user.id] = user;
+      });
+      return {
+        ...state,
+        users: newUsers,
+      };
+    }
     default:
       return state;
   }
@@ -216,6 +237,8 @@ interface AppContextType {
   sendMessage: (message: string, rootId?: string) => Promise<void>;
   loadChannelPosts: (channelId: string) => Promise<void>;
   refreshChannels: () => Promise<void>;
+  getUserInfo: (userId: string) => Promise<User>;
+  getUserDisplayName: (userId: string) => string;
 }
 
 // コンテキストの作成
@@ -958,6 +981,49 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   };
 
+  // ユーザー情報取得とキャッシュ
+  const getUserInfo = async (userId: string): Promise<User> => {
+    // キャッシュから検索
+    if (state.users[userId]) {
+      return state.users[userId];
+    }
+
+    try {
+      console.log('👤 ユーザー情報取得:', userId);
+      const user = await client.getUserById(userId);
+      dispatch({ type: 'CACHE_USER', payload: user });
+      return user;
+    } catch (error) {
+      console.error('❌ ユーザー情報取得エラー:', error);
+      // エラー時はダミーユーザーを返す
+      const dummyUser: User = {
+        id: userId,
+        username: `ユーザー${userId.slice(-4)}`,
+        email: '',
+        create_at: 0,
+        update_at: 0,
+        delete_at: 0,
+      };
+      return dummyUser;
+    }
+  };
+
+  // ユーザー表示名取得（キャッシュから即座に取得、なければIDから生成）
+  const getUserDisplayName = (userId: string): string => {
+    const user = state.users[userId];
+    if (user) {
+      return user.nickname || user.username || `ユーザー${userId.slice(-4)}`;
+    }
+    
+    // キャッシュにない場合はバックグラウンドで取得
+    getUserInfo(userId).catch(error => {
+      console.warn('⚠️ バックグラウンドユーザー情報取得失敗:', error);
+    });
+    
+    // 即座にフォールバック名を返す
+    return `ユーザー${userId.slice(-4)}`;
+  };
+
   // デバッグ用関数（開発環境のみ）
   React.useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1070,6 +1136,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     sendMessage,
     loadChannelPosts,
     refreshChannels,
+    getUserInfo,
+    getUserDisplayName,
   };
 
   return (

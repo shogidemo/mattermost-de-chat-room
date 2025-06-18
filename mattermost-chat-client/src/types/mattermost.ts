@@ -202,6 +202,7 @@ export interface AppState {
   currentChannel: Channel | null;
   channels: Channel[];
   posts: Record<string, Post[]>; // channel_id -> posts
+  users: Record<string, User>; // user_id -> user info (キャッシュ)
   isLoading: boolean;
   error: string | null;
   isConnected: boolean; // WebSocket接続状態

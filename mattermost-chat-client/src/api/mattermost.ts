@@ -192,6 +192,12 @@ class MattermostClient {
     return response.data;
   }
 
+  // 特定ユーザーの情報取得
+  async getUserById(userId: string): Promise<User> {
+    const response = await this.axiosInstance.get<User>(`/users/${userId}`);
+    return response.data;
+  }
+
   // チーム関連メソッド
   async getTeamsForUser(userId: string): Promise<Team[]> {
     const response = await this.axiosInstance.get<Team[]>(`/users/${userId}/teams`);
