@@ -288,7 +288,40 @@ class MattermostClient {
   }
 
   // WebSocket関連メソッド
+  private isConnecting = false;
+  private connectionPromise: Promise<void> | null = null;
+  
   async connectWebSocket(): Promise<void> {
+    // 既に接続中の場合はその接続を待つ
+    if (this.isConnecting && this.connectionPromise) {
+      console.log('⚠️ WebSocket接続が既に進行中 - 既存の接続を待機');
+      return this.connectionPromise;
+    }
+    
+    // 既に接続済みの場合は何もしない
+    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+      console.log('✅ WebSocketは既に接続済み');
+      return Promise.resolve();
+    }
+    
+    this.isConnecting = true;
+    
+    // 接続プロミスを作成して保存
+    this.connectionPromise = this._connectWebSocketInternal()
+      .then(() => {
+        this.isConnecting = false;
+        this.connectionPromise = null;
+      })
+      .catch((error) => {
+        this.isConnecting = false;
+        this.connectionPromise = null;
+        throw error;
+      });
+    
+    return this.connectionPromise;
+  }
+  
+  private async _connectWebSocketInternal(): Promise<void> {
     console.log('🔌 WebSocket接続開始 - 詳細ログ:', { 
       websocketUrl: this.websocketUrl,
       hasToken: !!this.token,
@@ -452,8 +485,13 @@ class MattermostClient {
           if (event.code !== 1000 && event.code !== 4001 && this.reconnectionAttempts < 3) {
             const backoffDelay = Math.min(this.currentBackoffDelay, 30000);
             console.log(`🔄 ${backoffDelay / 1000}秒後に再接続を試行します (試行回数: ${this.reconnectionAttempts + 1})`);
+            
+            // 接続状態をリセット
+            this.isConnecting = false;
+            this.connectionPromise = null;
+            
             setTimeout(() => {
-              if (this.token) {
+              if (this.token && !this.isConnecting) {
                 this.reconnectionAttempts++;
                 this.connectWebSocket().catch((err) => {
                   console.error('❌ 再接続失敗:', err);
