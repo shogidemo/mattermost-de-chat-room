@@ -6,20 +6,20 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // HTTP API プロキシ
       '/api': {
         target: 'http://localhost:8065',
         changeOrigin: true,
         secure: false,
-        ws: true, // WebSocketプロキシを有効化
         configure: (proxy, options) => {
           proxy.on('error', (err, req, res) => {
-            console.log('プロキシエラー:', err);
+            console.log('HTTPプロキシエラー:', err);
           });
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('プロキシリクエスト:', req.url);
+            console.log('HTTPプロキシリクエスト:', req.url);
           });
           proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('プロキシレスポンス:', req.url, proxyRes.statusCode);
+            console.log('HTTPプロキシレスポンス:', req.url, proxyRes.statusCode);
           });
         }
       }
