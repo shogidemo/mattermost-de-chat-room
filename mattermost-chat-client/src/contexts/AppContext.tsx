@@ -768,10 +768,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       console.log('🏢 チーム選択開始:', { teamId: team.id, teamName: team.display_name || team.name });
       dispatch({ type: 'SET_CURRENT_TEAM', payload: team });
       
-      // チームのチャンネル一覧を取得
-      console.log('📡 チャンネル一覧取得開始...', { teamId: team.id, teamName: team.display_name || team.name });
-      const channels = await client.getChannelsForTeam(team.id);
-      console.log('📋 取得したチャンネル一覧:', channels.map(ch => ({
+      // ユーザーが参加しているチャンネルのみを取得
+      console.log('📡 参加チャンネル一覧取得開始...', { teamId: team.id, teamName: team.display_name || team.name });
+      
+      if (!state.user) {
+        console.error('❌ ユーザー情報が存在しません');
+        throw new Error('ユーザー情報が必要です');
+      }
+      
+      const channels = await client.getMyChannelsForTeam(state.user.id, team.id);
+      console.log('📋 取得した参加チャンネル一覧:', channels.map(ch => ({
         id: ch.id,
         name: ch.display_name || ch.name,
         type: ch.type,
@@ -978,6 +984,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return;
     }
 
+    if (!state.user) {
+      console.error('❌ ユーザー情報が存在しません');
+      return;
+    }
+
     dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
@@ -987,9 +998,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         currentChannelsCount: state.channels.length
       });
       
-      // 最新のチャンネル一覧を取得
-      const channels = await client.getChannelsForTeam(state.currentTeam.id);
-      console.log('📋 更新されたチャンネル一覧:', channels.map(ch => ({
+      // ユーザーが参加している最新のチャンネル一覧を取得
+      const channels = await client.getMyChannelsForTeam(state.user.id, state.currentTeam.id);
+      console.log('📋 更新された参加チャンネル一覧:', channels.map(ch => ({
         id: ch.id,
         name: ch.display_name || ch.name,
         type: ch.type
