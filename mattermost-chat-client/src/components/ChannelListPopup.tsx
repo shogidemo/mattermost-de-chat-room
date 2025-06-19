@@ -8,15 +8,18 @@ import {
   Box,
   Divider,
   Fade,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   ArrowBack as ArrowBackIcon,
   Refresh as RefreshIcon,
+  OpenWith as DragIcon,
 } from '@mui/icons-material';
 import ChatMiniView from './ChatMiniView';
 import ChannelList from './ChannelList';
 import { useApp } from '../contexts/AppContext';
+import { useDraggable } from '../utils/useDraggable';
 import type { ChannelWithPreview } from '../types/mattermost';
 
 interface Channel {
@@ -45,6 +48,34 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
   const [viewState, setViewState] = React.useState<ViewState>('channelList');
   const [selectedChannel, setSelectedChannel] = React.useState<Channel | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  // ドラッグ機能を初期化
+  const { dragHandleProps, dialogProps, resetPosition } = useDraggable({
+    storageKey: 'chat-panel-position',
+    defaultPosition: { x: window.innerWidth - 370, y: window.innerHeight - 580 }
+  });
+
+  // イベント伝播を停止するヘルパー関数
+  const stopEventPropagation = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  // ポップアップが開かれるたびに、保存された位置がない場合はデフォルト位置に設定
+  const [hasInitialized, setHasInitialized] = React.useState(false);
+  
+  React.useEffect(() => {
+    if (open && !hasInitialized) {
+      // localStorageに位置が保存されているかチェック
+      const storedPosition = localStorage.getItem('chat-panel-position');
+      if (!storedPosition) {
+        // 保存された位置がない場合、初回表示位置にリセット
+        resetPosition();
+      }
+      setHasInitialized(true);
+    } else if (!open) {
+      setHasInitialized(false);
+    }
+  }, [open, hasInitialized, resetPosition]);
 
   // ChannelWithPreviewをChannelに変換するヘルパー関数
   const convertChannelWithPreviewToChannel = (channelWithPreview: ChannelWithPreview): Channel => {
@@ -134,13 +165,9 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
           height: 500,
           maxWidth: '90vw',
           maxHeight: '80vh',
-          position: 'fixed',
-          bottom: 100,
-          right: 20,
-          top: 'auto',
-          left: 'auto',
-          m: 0,
           borderRadius: 2,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          ...dialogProps.style,
         }
       }}
       BackdropProps={{
@@ -149,42 +176,83 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
     >
       <DialogTitle 
         component="div"
+        {...dragHandleProps}
         sx={{ 
+          ...dragHandleProps.style,
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
           pb: 1,
+          position: 'relative',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 32,
+            height: 4,
+            backgroundColor: 'divider',
+            borderRadius: 2,
+            opacity: 0.6,
+          }
         }}
       >
         {viewState === 'channelList' ? (
           <>
-            <Typography variant="h6" component="h2">チャット</Typography>
+            <Typography 
+              variant="h6" 
+              component="h2"
+              onDoubleClick={resetPosition}
+              sx={{ cursor: 'pointer' }}
+              title="ダブルクリックで位置をリセット"
+            >
+              チャット
+            </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <IconButton 
-                onClick={handleRefreshChannels} 
-                size="small"
-                disabled={isRefreshing || state.isLoading}
-                title="チャンネルリストを更新"
-              >
-                <RefreshIcon sx={{ 
-                  animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
-                  '@keyframes spin': {
-                    '0%': { transform: 'rotate(0deg)' },
-                    '100%': { transform: 'rotate(360deg)' }
-                  }
-                }} />
-              </IconButton>
-              <IconButton onClick={onClose} size="small">
-                <CloseIcon />
-              </IconButton>
+              <Tooltip title="チャンネルリストを更新">
+                <IconButton 
+                  onClick={handleRefreshChannels} 
+                  size="small"
+                  disabled={isRefreshing || state.isLoading}
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
+                >
+                  <RefreshIcon sx={{ 
+                    animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+                    '@keyframes spin': {
+                      '0%': { transform: 'rotate(0deg)' },
+                      '100%': { transform: 'rotate(360deg)' }
+                    }
+                  }} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="閉じる">
+                <IconButton 
+                  onClick={onClose} 
+                  size="small"
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </Tooltip>
             </Box>
           </>
         ) : (
           <>
             <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-              <IconButton onClick={handleBackToChannelList} size="small" sx={{ mr: 1 }}>
-                <ArrowBackIcon />
-              </IconButton>
+              <Tooltip title="チャンネル一覧に戻る">
+                <IconButton 
+                  onClick={handleBackToChannelList} 
+                  size="small" 
+                  sx={{ mr: 1 }}
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
+                >
+                  <ArrowBackIcon />
+                </IconButton>
+              </Tooltip>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
                 <Typography 
                   variant="body1" 
@@ -195,22 +263,32 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
                 <Typography 
                   variant="h6" 
                   component="h2" 
+                  onDoubleClick={resetPosition}
                   sx={{ 
                     fontWeight: 'bold',
                     color: 'primary.main',
                     minWidth: 0,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer'
                   }}
+                  title="ダブルクリックで位置をリセット"
                 >
                   {selectedChannel?.name || 'チャンネル'}
                 </Typography>
               </Box>
             </Box>
-            <IconButton onClick={onClose} size="small">
-              <CloseIcon />
-            </IconButton>
+            <Tooltip title="閉じる">
+              <IconButton 
+                onClick={onClose} 
+                size="small"
+                onMouseDown={stopEventPropagation}
+                onTouchStart={stopEventPropagation}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
           </>
         )}
       </DialogTitle>
