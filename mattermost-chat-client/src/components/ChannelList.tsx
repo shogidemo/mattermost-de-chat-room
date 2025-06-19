@@ -33,7 +33,7 @@ const ChannelList: React.FC<ChannelListProps> = ({ onChannelSelect }) => {
   const { channels, currentChannel, currentTeam } = state;
   const [channelsWithPreview, setChannelsWithPreview] = React.useState<ChannelWithPreview[]>([]);
   const [isLoadingPreviews, setIsLoadingPreviews] = React.useState(false);
-  const [filterText, setFilterText] = React.useState('佐藤'); // デフォルトで「佐藤」フィルターを適用
+  const [filterText, setFilterText] = React.useState(''); // デフォルトは空（フィルターなし）
   const [filteredChannels, setFilteredChannels] = React.useState<ChannelWithPreview[]>([]);
 
   // チャンネルプレビューの読み込み

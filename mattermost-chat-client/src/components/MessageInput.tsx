@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { KeyboardEvent } from 'react';
 import {
   Box,
@@ -15,6 +15,9 @@ import {
   EmojiEmotions as EmojiIcon,
 } from '@mui/icons-material';
 import { useApp } from '../contexts/AppContext';
+import MentionSuggestions from './MentionSuggestions';
+import MattermostClient from '../api/mattermost';
+import type { User } from '../types/mattermost';
 
 interface MessageInputProps {
   replyToPost?: string; // スレッド返信の場合のルート投稿ID
@@ -28,10 +31,27 @@ const MessageInput: React.FC<MessageInputProps> = ({
   onCancel,
 }) => {
   const { state, sendMessage } = useApp();
-  const { currentChannel, isLoading } = state;
+  const { currentChannel, currentTeam, isLoading } = state;
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textFieldRef = useRef<HTMLDivElement>(null);
+  
+  // メンション機能の状態
+  const [mentionAnchorEl, setMentionAnchorEl] = useState<HTMLElement | null>(null);
+  const [mentionSearchTerm, setMentionSearchTerm] = useState('');
+  const [mentionUsers, setMentionUsers] = useState<User[]>([]);
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [mentionStartPosition, setMentionStartPosition] = useState(-1);
+  
+  // Mattermost APIクライアント
+  const clientRef = useRef<MattermostClient | null>(null);
+  
+  useEffect(() => {
+    // APIクライアントの初期化
+    clientRef.current = new MattermostClient();
+  }, []);
 
   // デフォルトのプレースホルダー
   const getPlaceholder = () => {
@@ -75,15 +95,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
-  // Enterキーでの送信（Shift+Enterで改行）
-  const handleKeyPress = (event: KeyboardEvent<HTMLDivElement>) => {
-    console.log('⌨️ キー押下:', { key: event.key, shift: event.shiftKey });
-    if (event.key === 'Enter' && !event.shiftKey) {
-      console.log('🚀 Enterキーでメッセージ送信トリガー');
-      event.preventDefault();
-      handleSendMessage();
-    }
-  };
 
   // ファイル添付処理
   const handleFileAttach = () => {
@@ -102,6 +113,131 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const handleEmojiClick = () => {
     // TODO: 絵文字ピッカーの実装
     console.log('絵文字ピッカーを開く');
+  };
+
+  // ユーザー検索処理
+  const searchUsers = useCallback(async (searchTerm: string) => {
+    if (!clientRef.current || !currentTeam) return;
+    
+    setIsSearchingUsers(true);
+    try {
+      const users = await clientRef.current.searchUsers(searchTerm, currentTeam.id);
+      setMentionUsers(users);
+      setSelectedMentionIndex(0);
+    } catch (error) {
+      console.error('ユーザー検索エラー:', error);
+      setMentionUsers([]);
+    } finally {
+      setIsSearchingUsers(false);
+    }
+  }, [currentTeam]);
+
+  // メンション検索のデバウンス処理
+  useEffect(() => {
+    if (mentionSearchTerm.length > 0) {
+      const timer = setTimeout(() => {
+        searchUsers(mentionSearchTerm);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setMentionUsers([]);
+    }
+  }, [mentionSearchTerm, searchUsers]);
+
+  // テキスト変更時の処理
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    const cursorPosition = e.target.selectionStart || 0;
+    
+    setMessage(newValue);
+    
+    // @入力の検出
+    const lastAtIndex = newValue.lastIndexOf('@', cursorPosition - 1);
+    
+    if (lastAtIndex !== -1 && cursorPosition > lastAtIndex) {
+      // @の後の文字列を取得
+      const searchTerm = newValue.slice(lastAtIndex + 1, cursorPosition);
+      
+      // 空白文字がない場合のみメンション検索を実行
+      if (!searchTerm.includes(' ')) {
+        setMentionStartPosition(lastAtIndex);
+        setMentionSearchTerm(searchTerm);
+        setMentionAnchorEl(textFieldRef.current);
+      } else {
+        // 空白文字が含まれる場合はメンション候補を閉じる
+        closeMentionSuggestions();
+      }
+    } else {
+      // @が見つからない場合はメンション候補を閉じる
+      closeMentionSuggestions();
+    }
+  };
+
+  // メンション候補を閉じる
+  const closeMentionSuggestions = () => {
+    setMentionAnchorEl(null);
+    setMentionSearchTerm('');
+    setMentionUsers([]);
+    setSelectedMentionIndex(0);
+    setMentionStartPosition(-1);
+  };
+
+  // ユーザー選択処理
+  const handleSelectUser = (user: User) => {
+    if (mentionStartPosition === -1) return;
+    
+    // @と検索文字列を@usernameに置き換える
+    const beforeMention = message.slice(0, mentionStartPosition);
+    const afterMention = message.slice(mentionStartPosition + mentionSearchTerm.length + 1);
+    const newMessage = `${beforeMention}@${user.username} ${afterMention}`;
+    
+    setMessage(newMessage);
+    closeMentionSuggestions();
+    
+    // フォーカスを戻す
+    const input = textFieldRef.current?.querySelector('textarea');
+    if (input) {
+      input.focus();
+    }
+  };
+
+  // キーボードイベントの処理を更新
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // メンション候補が表示されている場合の処理
+    if (mentionAnchorEl && mentionUsers.length > 0) {
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          setSelectedMentionIndex((prev) => 
+            prev < mentionUsers.length - 1 ? prev + 1 : 0
+          );
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          setSelectedMentionIndex((prev) => 
+            prev > 0 ? prev - 1 : mentionUsers.length - 1
+          );
+          break;
+        case 'Enter':
+          event.preventDefault();
+          handleSelectUser(mentionUsers[selectedMentionIndex]);
+          break;
+        case 'Escape':
+          event.preventDefault();
+          closeMentionSuggestions();
+          break;
+        default:
+          // その他のキーの場合は通常の処理
+          break;
+      }
+    } else {
+      // メンション候補が表示されていない場合の通常の処理
+      if (event.key === 'Enter' && !event.shiftKey) {
+        console.log('🚀 Enterキーでメッセージ送信トリガー');
+        event.preventDefault();
+        handleSendMessage();
+      }
+    }
   };
 
   if (!currentChannel) {
@@ -153,12 +289,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
         {/* メッセージ入力欄 */}
         <TextField
+          ref={textFieldRef}
           fullWidth
           multiline
           maxRows={4}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyPress}
+          onChange={handleTextChange}
+          onKeyDown={handleKeyDown}
           placeholder={getPlaceholder()}
           disabled={isSending || isLoading}
           variant="outlined"
@@ -216,8 +353,17 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
       {/* 入力ヒント */}
       <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-        Enterで送信、Shift+Enterで改行
+        Enterで送信、Shift+Enterで改行、@でユーザーメンション
       </Typography>
+
+      {/* メンション候補 */}
+      <MentionSuggestions
+        anchorEl={mentionAnchorEl}
+        users={mentionUsers}
+        selectedIndex={selectedMentionIndex}
+        isLoading={isSearchingUsers}
+        onSelectUser={handleSelectUser}
+      />
     </Paper>
   );
 };
