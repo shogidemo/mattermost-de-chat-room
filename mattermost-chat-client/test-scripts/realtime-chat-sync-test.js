@@ -48,8 +48,8 @@ async function runRealtimeSyncTest() {
     
     // 2. User1でログイン
     console.log('\n2. User1でログインしています...');
-    await page1.fill('input[name="username"]', 'user1');
-    await page1.fill('input[name="password"]', 'user1password');
+    await page1.fill('input[name="username"]', 'testuser1');
+    await page1.fill('input[name="password"]', 'Test1234!');
     await page1.click('button[type="submit"]');
     await page1.waitForSelector('text=チャンネル', { timeout: 10000 });
     
@@ -60,8 +60,8 @@ async function runRealtimeSyncTest() {
     
     // 3. User2でログイン
     console.log('\n3. User2でログインしています...');
-    await page2.fill('input[name="username"]', 'user2');
-    await page2.fill('input[name="password"]', 'user2password');
+    await page2.fill('input[name="username"]', 'testuser2');
+    await page2.fill('input[name="password"]', 'Test1234!');
     await page2.click('button[type="submit"]');
     await page2.waitForSelector('text=チャンネル', { timeout: 10000 });
     
