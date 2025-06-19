@@ -28,13 +28,15 @@ interface UseDraggableOptions {
     bottom?: number;
   };
   storageKey?: string;
+  resetOnOpen?: boolean; // 開くたびに初期位置にリセットするか
 }
 
 export const useDraggable = (options: UseDraggableOptions = {}): DraggableState => {
   const {
-    defaultPosition = { x: window.innerWidth - 370, y: 100 }, // 右下からのデフォルト位置
+    defaultPosition = { x: window.innerWidth - 370, y: window.innerHeight - 580 }, // 右下のチャットボタン近く
     bounds,
-    storageKey = 'draggable-panel-position'
+    storageKey = 'draggable-panel-position',
+    resetOnOpen = false
   } = options;
 
   // localStorageから保存された位置を読み込み

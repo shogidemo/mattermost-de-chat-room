@@ -52,8 +52,25 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
   // ドラッグ機能を初期化
   const { dragHandleProps, dialogProps, resetPosition } = useDraggable({
     storageKey: 'chat-panel-position',
-    defaultPosition: { x: window.innerWidth - 370, y: 100 }
+    defaultPosition: { x: window.innerWidth - 370, y: window.innerHeight - 580 }
   });
+
+  // ポップアップが開かれるたびに、保存された位置がない場合はデフォルト位置に設定
+  const [hasInitialized, setHasInitialized] = React.useState(false);
+  
+  React.useEffect(() => {
+    if (open && !hasInitialized) {
+      // localStorageに位置が保存されているかチェック
+      const storedPosition = localStorage.getItem('chat-panel-position');
+      if (!storedPosition) {
+        // 保存された位置がない場合、初回表示位置にリセット
+        resetPosition();
+      }
+      setHasInitialized(true);
+    } else if (!open) {
+      setHasInitialized(false);
+    }
+  }, [open, hasInitialized, resetPosition]);
 
   // ChannelWithPreviewをChannelに変換するヘルパー関数
   const convertChannelWithPreviewToChannel = (channelWithPreview: ChannelWithPreview): Channel => {
