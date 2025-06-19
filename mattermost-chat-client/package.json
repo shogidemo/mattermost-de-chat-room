@@ -15,7 +15,9 @@
     "test:e2e:debug": "playwright test --debug",
     "mcp:start": "./scripts/start-playwright-mcp.sh",
     "mcp:server": "npx @playwright/mcp --headless false --browser chromium --port 3001",
-    "mcp:headless": "npx @playwright/mcp --headless true --browser chromium --port 3001"
+    "mcp:headless": "npx @playwright/mcp --headless true --browser chromium --port 3001",
+    "setup:test-env": "node scripts/setup-mattermost-test-env.cjs",
+    "test:realtime-sync": "node test-scripts/realtime-chat-sync-final.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
