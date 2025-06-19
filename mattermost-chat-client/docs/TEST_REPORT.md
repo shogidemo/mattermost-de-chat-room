@@ -29,7 +29,7 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 - ユーザー名とメッセージ内容が正しく表示
 - タイムスタンプが日本語形式で表示（「今」「42分前」など）
 
-![チャンネルリスト](complete-4-all-channels.png)
+![チャンネルリスト](../screenshots/test-results/complete-4-all-channels.png)
 
 ### 2. 他ユーザーのメッセージのリアルタイム表示
 
@@ -43,7 +43,7 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 - WebSocket接続が安定して動作
 - 未読カウントが自動的に更新
 
-![リアルタイム更新](complete-9-realtime.png)
+![リアルタイム更新](../screenshots/test-results/complete-9-realtime.png)
 
 ## 機能別テスト結果
 
@@ -70,19 +70,19 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 ## 画面遷移フロー
 
 1. **ログイン画面** → **メインダッシュボード**
-   ![ログイン](complete-1-login.png) → ![メイン画面](complete-2-main.png)
+   ![ログイン](../screenshots/test-results/complete-1-login.png) → ![メイン画面](../screenshots/test-results/complete-2-main.png)
 
 2. **チャットボタンクリック** → **チャンネルリスト表示**
-   ![チャンネルリスト](complete-3-channel-list.png)
+   ![チャンネルリスト](../screenshots/test-results/complete-3-channel-list.png)
 
 3. **チャンネル選択** → **チャット画面表示**
-   ![チャット画面](complete-5-sales-chat.png)
+   ![チャット画面](../screenshots/test-results/complete-5-sales-chat.png)
 
 4. **Mattermostとの連携確認**
-   ![Mattermost画面](complete-8-mattermost-reply.png)
+   ![Mattermost画面](../screenshots/test-results/complete-8-mattermost-reply.png)
 
 5. **最終状態（更新されたチャンネルリスト）**
-   ![最終状態](complete-10-final.png)
+   ![最終状態](../screenshots/test-results/complete-10-final.png)
 
 ## パフォーマンス指標
 
@@ -127,9 +127,9 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 | 2件目メッセージ受信時の増加 | ✅ 成功 | 未読件数が8→9に増加（合計2件増加） |
 | リアルタイム更新 | ✅ 成功 | WebSocket経由で即座に反映 |
 
-![未読件数テスト1](unread-count-final-1-initial.png)
-![未読件数テスト2](unread-count-final-2-plus-one.png)
-![未読件数テスト3](unread-count-final-3-plus-two.png)
+![未読件数テスト1](../screenshots/test-results/unread-count-final-1-initial.png)
+![未読件数テスト2](../screenshots/test-results/unread-count-final-2-plus-one.png)
+![未読件数テスト3](../screenshots/test-results/unread-count-final-3-plus-two.png)
 
 #### 2. チャンネルクリックによるチャット表示
 
@@ -139,7 +139,7 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 | 過去メッセージの表示 | ✅ 成功 | Mattermostの実データが表示 |
 | UI遷移のスムーズさ | ✅ 成功 | 遅延なく即座に表示 |
 
-![チャンネルクリック](additional-test-1-channel-click.png)
+![チャンネルクリック](../screenshots/test-results/channel-click-2-after.png)
 
 #### 3. メッセージ送信機能
 
@@ -150,8 +150,8 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 | 送信後の入力欄クリア | ✅ 成功 | 自動的にクリアされる |
 | 送信メッセージの表示 | ✅ 成功 | 即座にチャット画面に反映 |
 
-![メッセージ送信前](send-msg-2-before-send.png)
-![メッセージ送信後](send-msg-3-after-send.png)
+![メッセージ送信前](../screenshots/test-results/send-msg-2-before-send.png)
+![メッセージ送信後](../screenshots/test-results/send-msg-3-after-send.png)
 
 #### 4. 他ユーザーへのメッセージ表示
 
@@ -162,8 +162,8 @@ Mattermost APIと連携したReactチャットアプリケーションの動作�
 | タイムスタンプ | ✅ 成功 | 正確な時刻が表示 |
 | 双方向通信 | ✅ 成功 | Mattermostからの返信も受信 |
 
-![Mattermost側の表示](send-msg-4-mattermost-view.png)
-![返信メッセージ受信](send-msg-5-reply-received.png)
+![Mattermost側の表示](../screenshots/test-results/send-msg-4-mattermost-view.png)
+![返信メッセージ受信](../screenshots/test-results/send-msg-5-reply-received.png)
 
 ### 総合評価
 
