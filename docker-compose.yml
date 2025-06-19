@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   # PostgreSQLデータベース
   postgres:
     image: postgres:13-alpine
+    platform: linux/arm64
     restart: unless-stopped
     environment:
       POSTGRES_USER: mmuser
@@ -18,7 +17,7 @@ services:
 
   # Mattermostサーバー
   mattermost:
-    image: mattermost/mattermost-team-edition:latest
+    image: mattermost/mattermost-team-edition:9.11
     restart: unless-stopped
     ports:
       - "8065:8065"
