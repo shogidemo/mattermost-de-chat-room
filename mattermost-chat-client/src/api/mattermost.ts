@@ -192,6 +192,12 @@ class MattermostClient {
     return response.data;
   }
 
+  // 特定ユーザーの情報取得
+  async getUserById(userId: string): Promise<User> {
+    const response = await this.axiosInstance.get<User>(`/users/${userId}`);
+    return response.data;
+  }
+
   // チーム関連メソッド
   async getTeamsForUser(userId: string): Promise<Team[]> {
     const response = await this.axiosInstance.get<Team[]>(`/users/${userId}/teams`);
@@ -263,6 +269,23 @@ class MattermostClient {
       `/channels/${channelId}/posts?page=${page}&per_page=${perPage}`
     );
     return response.data;
+  }
+
+  // チャンネルの最新メッセージを取得
+  async getLatestPostForChannel(channelId: string): Promise<Post | null> {
+    try {
+      const response = await this.axiosInstance.get(
+        `/channels/${channelId}/posts?page=0&per_page=1`
+      );
+      const { order, posts } = response.data;
+      if (order.length > 0 && posts[order[0]]) {
+        return posts[order[0]];
+      }
+      return null;
+    } catch (error) {
+      console.warn(`チャンネル ${channelId} の最新メッセージ取得に失敗:`, error);
+      return null;
+    }
   }
 
   async createPost(postData: CreatePostRequest): Promise<Post> {

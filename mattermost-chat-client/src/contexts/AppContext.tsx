@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
-import type { AppState, User, Team, Channel, Post, WebSocketEvent } from '../types/mattermost';
+import type { AppState, User, Team, Channel, Post, WebSocketEvent, ChannelWithPreview } from '../types/mattermost';
 
 // ローカルストレージからメッセージを復元
 const restorePostsFromStorage = (): Record<string, Post[]> => {
@@ -100,6 +100,8 @@ const getInitialState = (): AppState => {
     currentChannel: restoredSelection.channel,
     channels: restoredChannels,
     posts: restorePostsFromStorage(),
+    users: {}, // ユーザー情報キャッシュを初期化
+    lastReadPosts: {}, // 未読管理を初期化
     isLoading: false,
     error: null,
     isConnected: false,
@@ -120,7 +122,10 @@ type AppAction =
   | { type: 'ADD_POST'; payload: { channelId: string; post: Post } }
   | { type: 'UPDATE_POST'; payload: { channelId: string; post: Post } }
   | { type: 'DELETE_POST'; payload: { channelId: string; postId: string } }
-  | { type: 'SET_CONNECTED'; payload: boolean };
+  | { type: 'SET_CONNECTED'; payload: boolean }
+  | { type: 'CACHE_USER'; payload: User }
+  | { type: 'CACHE_USERS'; payload: User[] }
+  | { type: 'MARK_CHANNEL_READ'; payload: { channelId: string; lastPostId: string } };
 
 // リデューサー関数
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -158,6 +163,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'ADD_POST': {
       const existingPosts = state.posts[action.payload.channelId] || [];
+      // 重複チェック：同じIDのメッセージが既に存在する場合はスキップ
+      const postExists = existingPosts.some(post => post.id === action.payload.post.id);
+      if (postExists) {
+        console.log('🚫 重複メッセージを検出 - スキップ:', action.payload.post.id);
+        return state;
+      }
       const newPostsForAddPost = {
         ...state.posts,
         [action.payload.channelId]: [...existingPosts, action.payload.post],
@@ -199,6 +210,32 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'SET_CONNECTED':
       return { ...state, isConnected: action.payload };
+    case 'CACHE_USER':
+      return {
+        ...state,
+        users: {
+          ...state.users,
+          [action.payload.id]: action.payload,
+        },
+      };
+    case 'CACHE_USERS': {
+      const newUsers = { ...state.users };
+      action.payload.forEach(user => {
+        newUsers[user.id] = user;
+      });
+      return {
+        ...state,
+        users: newUsers,
+      };
+    }
+    case 'MARK_CHANNEL_READ':
+      return {
+        ...state,
+        lastReadPosts: {
+          ...state.lastReadPosts,
+          [action.payload.channelId]: action.payload.lastPostId,
+        },
+      };
     default:
       return state;
   }
@@ -216,6 +253,12 @@ interface AppContextType {
   sendMessage: (message: string, rootId?: string) => Promise<void>;
   loadChannelPosts: (channelId: string) => Promise<void>;
   refreshChannels: () => Promise<void>;
+  getUserInfo: (userId: string) => Promise<User>;
+  getUserDisplayName: (userId: string) => string;
+  getChannelsWithPreview: () => Promise<ChannelWithPreview[]>;
+  getUnreadCount: (channelId: string) => number;
+  markChannelAsRead: (channelId: string) => void;
+  filterChannels: (channels: ChannelWithPreview[], filter: string) => ChannelWithPreview[];
 }
 
 // コンテキストの作成
@@ -338,6 +381,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   // メッセージポーリング機能
   const startMessagePolling = React.useCallback(() => {
+    // WebSocketが接続されている場合はポーリングを開始しない
+    if (client.isWebSocketConnected()) {
+      console.log('🚫 WebSocket接続中 - ポーリング開始をスキップ');
+      return;
+    }
+    
     // ポーリング停止処理中の場合は開始を遅延
     if (pollingStoppingRef.current) {
       console.log('⏳ ポーリング停止中 - 開始を遅延');
@@ -388,6 +437,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
               新規: newPosts.length,
               削除: deletedPosts.length
             });
+            
+            // WebSocketが接続されている場合は、ポーリングを停止
+            if (client.isWebSocketConnected()) {
+              console.log('⚠️ WebSocket接続検出 - ポーリング停止');
+              if ((window as any).stopMessagePolling) {
+                (window as any).stopMessagePolling();
+              }
+              return;
+            }
             
             // 完全なメッセージリストを設定（全体を更新）
             dispatch({
@@ -762,6 +820,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       dispatch({ type: 'SET_CURRENT_CHANNEL', payload: channel });
       await loadChannelPosts(channel.id);
       
+      // チャンネル選択時に既読マークを設定
+      markChannelAsRead(channel.id);
+      
       // チャンネル選択時にWebSocketが未接続の場合はポーリング開始
       if (!client.isWebSocketConnected()) {
         console.log('🔄 チャンネル選択時にポーリング開始');
@@ -958,6 +1019,163 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   };
 
+  // ユーザー情報取得とキャッシュ
+  const getUserInfo = async (userId: string): Promise<User> => {
+    // キャッシュから検索
+    if (state.users[userId]) {
+      return state.users[userId];
+    }
+
+    try {
+      console.log('👤 ユーザー情報取得:', userId);
+      const user = await client.getUserById(userId);
+      dispatch({ type: 'CACHE_USER', payload: user });
+      return user;
+    } catch (error) {
+      console.error('❌ ユーザー情報取得エラー:', error);
+      // エラー時はダミーユーザーを返す
+      const dummyUser: User = {
+        id: userId,
+        username: `ユーザー${userId.slice(-4)}`,
+        email: '',
+        create_at: 0,
+        update_at: 0,
+        delete_at: 0,
+      };
+      return dummyUser;
+    }
+  };
+
+  // ユーザー表示名取得（キャッシュから即座に取得、なければIDから生成）
+  const getUserDisplayName = (userId: string): string => {
+    const user = state.users[userId];
+    if (user) {
+      return user.nickname || user.username || `ユーザー${userId.slice(-4)}`;
+    }
+    
+    // キャッシュにない場合はバックグラウンドで取得
+    getUserInfo(userId).catch(error => {
+      console.warn('⚠️ バックグラウンドユーザー情報取得失敗:', error);
+    });
+    
+    // 即座にフォールバック名を返す
+    return `ユーザー${userId.slice(-4)}`;
+  };
+
+  // チャンネルに最新メッセージプレビューを付加
+  const getChannelsWithPreview = async (): Promise<ChannelWithPreview[]> => {
+    console.log('📋 チャンネルプレビュー取得開始', { channelsCount: state.channels.length });
+    
+    const channelsWithPreview: ChannelWithPreview[] = await Promise.all(
+      state.channels.map(async (channel): Promise<ChannelWithPreview> => {
+        try {
+          // 最新メッセージを取得
+          const latestPost = await client.getLatestPostForChannel(channel.id);
+          
+          if (latestPost) {
+            // メッセージ内容を50文字で省略
+            const truncatedMessage = latestPost.message.length > 50 
+              ? latestPost.message.substring(0, 50) + '...'
+              : latestPost.message;
+
+            return {
+              ...channel,
+              lastMessage: {
+                content: truncatedMessage || '(添付ファイル)',
+                timestamp: latestPost.create_at,
+                userId: latestPost.user_id,
+                userName: getUserDisplayName(latestPost.user_id),
+              },
+              unreadCount: getUnreadCount(channel.id)
+            };
+          } else {
+            // メッセージがない場合
+            return {
+              ...channel,
+              lastMessage: undefined,
+              unreadCount: getUnreadCount(channel.id)
+            };
+          }
+        } catch (error) {
+          console.warn(`チャンネル ${channel.display_name || channel.name} のプレビュー取得失敗:`, error);
+          return { 
+            ...channel, 
+            unreadCount: getUnreadCount(channel.id) 
+          };
+        }
+      })
+    );
+
+    // 最新のアクティビティ順でソート
+    const sortedChannels = channelsWithPreview.sort((a, b) => {
+      const timeA = a.lastMessage?.timestamp || a.last_post_at || 0;
+      const timeB = b.lastMessage?.timestamp || b.last_post_at || 0;
+      return timeB - timeA; // 降順（新しい順）
+    });
+
+    console.log('✅ チャンネルプレビュー取得完了', { 
+      channelsWithPreview: sortedChannels.length,
+      withMessages: sortedChannels.filter(ch => ch.lastMessage).length
+    });
+
+    return sortedChannels;
+  };
+
+  // 未読メッセージ数の計算
+  const getUnreadCount = (channelId: string): number => {
+    const posts = state.posts[channelId] || [];
+    const lastReadPostId = state.lastReadPosts[channelId];
+
+    if (!lastReadPostId || posts.length === 0) {
+      // 最初の訪問または投稿がない場合はすべて未読
+      return posts.length;
+    }
+
+    // 最後に読んだ投稿のインデックスを見つける
+    const lastReadIndex = posts.findIndex(post => post.id === lastReadPostId);
+    
+    if (lastReadIndex === -1) {
+      // 最後に読んだ投稿が見つからない場合（削除された可能性）
+      return posts.length;
+    }
+
+    // 最後に読んだ投稿以降の投稿数を返す
+    return posts.length - 1 - lastReadIndex;
+  };
+
+  // チャンネルを既読にマーク
+  const markChannelAsRead = (channelId: string): void => {
+    const posts = state.posts[channelId] || [];
+    if (posts.length > 0) {
+      const lastPost = posts[posts.length - 1];
+      dispatch({
+        type: 'MARK_CHANNEL_READ',
+        payload: { channelId, lastPostId: lastPost.id },
+      });
+      console.log('📖 チャンネルを既読にマーク:', { 
+        channelId: channelId.substring(0, 8) + '...', 
+        lastPostId: lastPost.id,
+        messagePreview: lastPost.message.substring(0, 30) + '...'
+      });
+    }
+  };
+
+  // チャンネルフィルター機能
+  const filterChannels = (channels: ChannelWithPreview[], filter: string): ChannelWithPreview[] => {
+    if (!filter.trim()) {
+      return channels;
+    }
+
+    const filterLower = filter.toLowerCase().trim();
+    
+    return channels.filter(channel => {
+      const channelName = (channel.display_name || channel.name).toLowerCase();
+      const channelPurpose = (channel.purpose || '').toLowerCase();
+      
+      return channelName.includes(filterLower) || channelPurpose.includes(filterLower);
+    });
+  };
+
   // デバッグ用関数（開発環境のみ）
   React.useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1070,6 +1288,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     sendMessage,
     loadChannelPosts,
     refreshChannels,
+    getUserInfo,
+    getUserDisplayName,
+    getChannelsWithPreview,
+    getUnreadCount,
+    markChannelAsRead,
+    filterChannels,
   };
 
   return (

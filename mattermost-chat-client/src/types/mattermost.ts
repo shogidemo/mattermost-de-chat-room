@@ -48,6 +48,17 @@ export interface Channel {
   creator_id?: string;
 }
 
+// 最新メッセージプレビュー付きチャンネル情報
+export interface ChannelWithPreview extends Channel {
+  lastMessage?: {
+    content: string;
+    timestamp: number;
+    userId: string;
+    userName?: string;
+  };
+  unreadCount?: number;
+}
+
 // 投稿（メッセージ）情報を表す型
 export interface Post {
   id: string;
@@ -202,6 +213,8 @@ export interface AppState {
   currentChannel: Channel | null;
   channels: Channel[];
   posts: Record<string, Post[]>; // channel_id -> posts
+  users: Record<string, User>; // user_id -> user info (キャッシュ)
+  lastReadPosts: Record<string, string>; // channel_id -> last_read_post_id (未読管理)
   isLoading: boolean;
   error: string | null;
   isConnected: boolean; // WebSocket接続状態

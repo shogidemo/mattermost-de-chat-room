@@ -35,6 +35,8 @@ interface MiniMessageItemProps {
 }
 
 const MiniMessageItem: React.FC<MiniMessageItemProps> = ({ post }) => {
+  const { getUserDisplayName } = useApp();
+  
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('ja-JP', { 
@@ -43,17 +45,37 @@ const MiniMessageItem: React.FC<MiniMessageItemProps> = ({ post }) => {
     });
   };
 
+  // ユーザー名の取得（モックユーザー対応）
+  const getUserName = (userId: string): string => {
+    // モックユーザーの場合の名前マッピング
+    const mockUserNames: Record<string, string> = {
+      'mock-user-1': '管理者',
+      'mock-user-2': '田中太郎',
+      'sato-user': '佐藤花子',
+    };
+    
+    if (mockUserNames[userId]) {
+      return mockUserNames[userId];
+    }
+    
+    // 実際のMattermostユーザーの場合
+    return getUserDisplayName(userId);
+  };
+
+  const userName = getUserName(post.user_id);
+  const userInitial = userName.charAt(0).toUpperCase();
+
   return (
     <Box sx={{ display: 'flex', mb: 1, px: 1 }}>
       <Avatar 
         sx={{ width: 32, height: 32, mr: 1, fontSize: '0.875rem' }}
       >
-        {post.user_id ? post.user_id.charAt(0).toUpperCase() : 'U'}
+        {userInitial}
       </Avatar>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
           <Typography variant="body2" fontWeight="bold">
-            {post.user_id || 'ユーザー'}
+            {userName}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             {formatTime(post.create_at)}
@@ -182,7 +204,55 @@ const ChatMiniView: React.FC<ChatMiniViewProps> = ({ channel }) => {
           setLocalMessages(existingAppMessages);
           debugLog('既存メッセージ復元', { count: existingAppMessages.length });
         } else {
-          debugLog('メッセージなし - Mattermostチャンネルの使用を推奨');
+          // モックチャンネル用の初期メッセージ
+          const mockMessages: Post[] = [
+            {
+              id: `mock-msg-1-${channel.id}`,
+              create_at: Date.now() - 3600000, // 1時間前
+              update_at: Date.now() - 3600000,
+              edit_at: 0,
+              delete_at: 0,
+              is_pinned: false,
+              user_id: 'mock-user-1',
+              channel_id: channel.id,
+              message: `${channel.name}へようこそ！このチャンネルで情報を共有しましょう。`,
+              type: '',
+              props: {},
+            },
+            {
+              id: `mock-msg-2-${channel.id}`,
+              create_at: Date.now() - 1800000, // 30分前
+              update_at: Date.now() - 1800000,
+              edit_at: 0,
+              delete_at: 0,
+              is_pinned: false,
+              user_id: 'mock-user-2',
+              channel_id: channel.id,
+              message: channel.lastMessage || 'テストメッセージです。',
+              type: '',
+              props: {},
+            }
+          ];
+          
+          // 佐藤チャンネルの場合は特別なメッセージを追加
+          if (channel.name.includes('佐藤')) {
+            mockMessages.push({
+              id: `mock-msg-3-${channel.id}`,
+              create_at: Date.now() - 600000, // 10分前
+              update_at: Date.now() - 600000,
+              edit_at: 0,
+              delete_at: 0,
+              is_pinned: false,
+              user_id: 'sato-user',
+              channel_id: channel.id,
+              message: '佐藤です。プロジェクトの進捗を共有します。現在、開発フェーズ3が完了し、テスト段階に入りました。',
+              type: '',
+              props: {},
+            });
+          }
+          
+          setLocalMessages(mockMessages);
+          debugLog('モックメッセージ生成', { count: mockMessages.length });
         }
       }
     };

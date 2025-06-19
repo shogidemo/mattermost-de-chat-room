@@ -84,12 +84,30 @@ const mockChannels = [
     icon: '🚛',
     isOnline: true,
   },
+  {
+    id: '5',
+    name: '佐藤チーム',
+    lastMessage: '佐藤さんからの最新アップデート',
+    timestamp: '15:45',
+    unreadCount: 2,
+    icon: '👤',
+    isOnline: true,
+  },
+  {
+    id: '6',
+    name: '佐藤プロジェクト',
+    lastMessage: 'プロジェクト進捗報告',
+    timestamp: '13:20',
+    unreadCount: 1,
+    icon: '📋',
+    isOnline: true,
+  },
 ];
 
 // 画面状態の型定義
 type ScreenState = 'login' | 'main';
 
-// 開発モード：ログイン不要でチャット機能をテスト（無効化）
+// 開発モード：ログイン不要でチャット機能をテスト（無効化してMattermost連携）
 const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
 
 // アプリケーションコンテンツ（認証状態により切り替え）
@@ -173,7 +191,7 @@ const AppContent: React.FC = () => {
           isOnline: true,
         }));
 
-        // Mattermostの実チャンネルのみを使用（モックチャンネルは完全に除外）
+        // Mattermostの実チャンネルのみを使用
         const integrated = [...convertedRealChannels];
         
         console.log('[統合] Mattermostチャンネルのみを表示:', {
@@ -210,22 +228,13 @@ const AppContent: React.FC = () => {
           isLoggedIn: !!user
         });
         
-        // デバッグ用：ログインしていない場合は最小限のモックチャンネルを表示
+        // Mattermostチャンネルがない場合
         if (!user) {
           console.log('ℹ️ 未ログイン状態 - ログインしてください');
           setMergedChannels([]);
         } else {
           console.log('⚠️ ログイン済みだがチャンネルなし - Mattermostでチャンネルを作成してください');
-          // ガイダンス用の情報表示
-          setMergedChannels([{
-            id: 'no-channels-guide',
-            name: '📝 チャンネルを作成してください',
-            lastMessage: 'Mattermostで最初のチャンネルを作成してから、このアプリの更新ボタン（🔄）をクリックしてください',
-            timestamp: 'ガイド',
-            unreadCount: 0,
-            icon: '💡',
-            isOnline: false
-          }]);
+          setMergedChannels([]);
         }
       }
     };

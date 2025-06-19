@@ -30,7 +30,7 @@ interface MessageItemProps {
 }
 
 const MessageItem: React.FC<MessageItemProps> = ({ post, showAvatar = true }) => {
-  const { state } = useApp();
+  const { state, getUserDisplayName } = useApp();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const { user: currentUser } = state;
 
@@ -69,11 +69,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ post, showAvatar = true }) =>
     }
   };
 
-  // ユーザー名の取得（実際の実装では、ユーザー情報をキャッシュして使用）
-  const getUserDisplayName = (userId: string) => {
-    // TODO: ユーザー情報の取得とキャッシュ機能を実装
-    return `ユーザー${userId.slice(-4)}`;
-  };
+  // ユーザー名の取得はAppContextから提供
 
   // ユーザーアバターの色を生成
   const getAvatarColor = (userId: string) => {
