@@ -24,7 +24,11 @@ import {
 import { useApp } from '../contexts/AppContext';
 import type { Channel, ChannelWithPreview } from '../types/mattermost';
 
-const ChannelList: React.FC = () => {
+interface ChannelListProps {
+  onChannelSelect?: (channel: ChannelWithPreview) => void;
+}
+
+const ChannelList: React.FC<ChannelListProps> = ({ onChannelSelect }) => {
   const { state, selectChannel, getChannelsWithPreview, filterChannels } = useApp();
   const { channels, currentChannel, currentTeam } = state;
   const [channelsWithPreview, setChannelsWithPreview] = React.useState<ChannelWithPreview[]>([]);
@@ -147,6 +151,10 @@ const ChannelList: React.FC = () => {
   const handleChannelSelect = async (channel: ChannelWithPreview) => {
     try {
       await selectChannel(channel);
+      // 親コンポーネントのハンドラーがあれば呼び出す
+      if (onChannelSelect) {
+        onChannelSelect(channel);
+      }
     } catch (error) {
       console.error('チャンネル選択エラー:', error);
     }

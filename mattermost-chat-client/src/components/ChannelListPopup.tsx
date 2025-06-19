@@ -23,6 +23,8 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import ChatMiniView from './ChatMiniView';
+import ChatMiniViewDebug from './ChatMiniViewDebug';
+import ChannelList from './ChannelList';
 import { useApp } from '../contexts/AppContext';
 
 interface Channel {
@@ -174,97 +176,11 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
       <DialogContent sx={{ p: 0, overflow: 'hidden' }}>
         <Fade in={viewState === 'channelList'} timeout={300}>
           <Box sx={{ display: viewState === 'channelList' ? 'block' : 'none', height: '100%' }}>
-            <List sx={{ height: '100%', overflow: 'auto' }}>
-            {channels.map((channel) => (
-              <ListItem
-                key={channel.id}
-                component="button"
-                onClick={() => handleChannelClick(channel)}
-                sx={{
-                  py: 1.5,
-                  cursor: 'pointer',
-                  backgroundColor: 'background.paper',
-                  color: 'text.primary',
-                  border: 'none',
-                  textAlign: 'left',
-                  width: '100%',
-                  '&:hover': {
-                    backgroundColor: 'action.hover',
-                  },
-                  '&:focus': {
-                    backgroundColor: 'action.selected',
-                    outline: 'none',
-                  },
-                }}
-              >
-                <ListItemAvatar>
-                  <Box sx={{ position: 'relative' }}>
-                    <Avatar sx={{ 
-                      width: 48, 
-                      height: 48, 
-                      fontSize: '1.5rem',
-                      backgroundColor: 'primary.main',
-                      color: 'primary.contrastText'
-                    }}>
-                      {channel.icon}
-                    </Avatar>
-                    {channel.isOnline && (
-                      <CircleIcon
-                        sx={{
-                          position: 'absolute',
-                          bottom: 2,
-                          right: 2,
-                          width: 12,
-                          height: 12,
-                          color: 'success.main',
-                        }}
-                      />
-                    )}
-                  </Box>
-                </ListItemAvatar>
-                
-                <ListItemText
-                  primary={
-                    <Typography variant="subtitle1" fontWeight="medium" color="text.primary">
-                      {channel.name}
-                    </Typography>
-                  }
-                  secondary={
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: '200px',
-                      }}
-                    >
-                      {channel.lastMessage}
-                    </Typography>
-                  }
-                />
-                
-                <ListItemSecondaryAction>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {channel.timestamp}
-                    </Typography>
-                    {channel.unreadCount > 0 && (
-                      <Badge
-                        badgeContent={channel.unreadCount}
-                        color="error"
-                        sx={{ mt: 0.5 }}
-                      />
-                    )}
-                  </Box>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-            </List>
+            <ChannelList 
+              onChannelSelect={handleChannelClick}
+            />
           </Box>
         </Fade>
-        
         <Fade in={viewState === 'chat'} timeout={300}>
           <Box sx={{ display: viewState === 'chat' ? 'block' : 'none', height: '100%' }}>
             {selectedChannel && (

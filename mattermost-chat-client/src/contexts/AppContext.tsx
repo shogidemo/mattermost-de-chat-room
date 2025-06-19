@@ -163,6 +163,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'ADD_POST': {
       const existingPosts = state.posts[action.payload.channelId] || [];
+      // 重複チェック：同じIDのメッセージが既に存在する場合はスキップ
+      const postExists = existingPosts.some(post => post.id === action.payload.post.id);
+      if (postExists) {
+        console.log('🚫 重複メッセージを検出 - スキップ:', action.payload.post.id);
+        return state;
+      }
       const newPostsForAddPost = {
         ...state.posts,
         [action.payload.channelId]: [...existingPosts, action.payload.post],
@@ -375,6 +381,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   // メッセージポーリング機能
   const startMessagePolling = React.useCallback(() => {
+    // WebSocketが接続されている場合はポーリングを開始しない
+    if (client.isWebSocketConnected()) {
+      console.log('🚫 WebSocket接続中 - ポーリング開始をスキップ');
+      return;
+    }
+    
     // ポーリング停止処理中の場合は開始を遅延
     if (pollingStoppingRef.current) {
       console.log('⏳ ポーリング停止中 - 開始を遅延');
@@ -425,6 +437,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
               新規: newPosts.length,
               削除: deletedPosts.length
             });
+            
+            // WebSocketが接続されている場合は、ポーリングを停止
+            if (client.isWebSocketConnected()) {
+              console.log('⚠️ WebSocket接続検出 - ポーリング停止');
+              if ((window as any).stopMessagePolling) {
+                (window as any).stopMessagePolling();
+              }
+              return;
+            }
             
             // 完全なメッセージリストを設定（全体を更新）
             dispatch({
