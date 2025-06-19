@@ -419,11 +419,8 @@ const ChatMiniView: React.FC<ChatMiniViewProps> = ({ channel }) => {
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              {channel.icon} {channel.name}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
               {isRealMattermostChannel(channel.id) 
-                ? 'Mattermostチャンネル - 会話を開始しましょう'
+                ? '会話を開始しましょう'
                 : '⚠️ 非同期チャンネル（Mattermostを使用してください）'}
             </Typography>
             {isRealMattermostChannel(channel.id) && (

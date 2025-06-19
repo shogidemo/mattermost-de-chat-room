@@ -3,13 +3,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemSecondaryAction,
-  Avatar,
-  Badge,
   Typography,
   IconButton,
   Box,
@@ -18,14 +11,13 @@ import {
 } from '@mui/material';
 import {
   Close as CloseIcon,
-  Circle as CircleIcon,
   ArrowBack as ArrowBackIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import ChatMiniView from './ChatMiniView';
-import ChatMiniViewDebug from './ChatMiniViewDebug';
 import ChannelList from './ChannelList';
 import { useApp } from '../contexts/AppContext';
+import type { ChannelWithPreview } from '../types/mattermost';
 
 interface Channel {
   id: string;
@@ -48,12 +40,42 @@ interface ChannelListPopupProps {
 const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
   open,
   onClose,
-  channels,
 }) => {
   const { refreshChannels, state } = useApp();
   const [viewState, setViewState] = React.useState<ViewState>('channelList');
   const [selectedChannel, setSelectedChannel] = React.useState<Channel | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  // ChannelWithPreviewをChannelに変換するヘルパー関数
+  const convertChannelWithPreviewToChannel = (channelWithPreview: ChannelWithPreview): Channel => {
+    // チャンネルタイプに応じてアイコンを決定
+    const getChannelIcon = (type: string) => {
+      switch (type) {
+        case 'O': return '🏢'; // オープンチャンネル
+        case 'P': return '🔒'; // プライベートチャンネル
+        case 'D': return '👤'; // ダイレクトメッセージ
+        case 'G': return '👥'; // グループメッセージ
+        default: return '💬';
+      }
+    };
+
+    return {
+      id: channelWithPreview.id,
+      name: channelWithPreview.display_name || channelWithPreview.name,
+      lastMessage: channelWithPreview.lastMessage?.content || '新しいチャンネル',
+      timestamp: channelWithPreview.lastMessage 
+        ? new Date(channelWithPreview.lastMessage.timestamp).toLocaleString('ja-JP', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : '新規',
+      unreadCount: channelWithPreview.unreadCount || 0,
+      icon: getChannelIcon(channelWithPreview.type),
+      isOnline: true,
+    };
+  };
 
   // ポップアップが閉じるときにビューをリセット
   React.useEffect(() => {
@@ -79,8 +101,9 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
     return () => clearInterval(interval);
   }, [open, viewState, isRefreshing, state.isLoading, refreshChannels]);
 
-  const handleChannelClick = (channel: Channel) => {
-    setSelectedChannel(channel);
+  const handleChannelListSelect = (channelWithPreview: ChannelWithPreview) => {
+    const convertedChannel = convertChannelWithPreviewToChannel(channelWithPreview);
+    setSelectedChannel(convertedChannel);
     setViewState('chat');
   };
 
@@ -158,11 +181,32 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
           </>
         ) : (
           <>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
               <IconButton onClick={handleBackToChannelList} size="small" sx={{ mr: 1 }}>
                 <ArrowBackIcon />
               </IconButton>
-              <Typography variant="h6" component="h2">{selectedChannel?.name}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                <Typography 
+                  variant="body1" 
+                  sx={{ fontSize: '1.2em' }}
+                >
+                  {selectedChannel?.icon}
+                </Typography>
+                <Typography 
+                  variant="h6" 
+                  component="h2" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: 'primary.main',
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {selectedChannel?.name || 'チャンネル'}
+                </Typography>
+              </Box>
             </Box>
             <IconButton onClick={onClose} size="small">
               <CloseIcon />
@@ -177,7 +221,7 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
         <Fade in={viewState === 'channelList'} timeout={300}>
           <Box sx={{ display: viewState === 'channelList' ? 'block' : 'none', height: '100%' }}>
             <ChannelList 
-              onChannelSelect={handleChannelClick}
+              onChannelSelect={handleChannelListSelect}
             />
           </Box>
         </Fade>
