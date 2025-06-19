@@ -55,6 +55,11 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
     defaultPosition: { x: window.innerWidth - 370, y: window.innerHeight - 580 }
   });
 
+  // イベント伝播を停止するヘルパー関数
+  const stopEventPropagation = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+  }, []);
+
   // ポップアップが開かれるたびに、保存された位置がない場合はデフォルト位置に設定
   const [hasInitialized, setHasInitialized] = React.useState(false);
   
@@ -173,11 +178,11 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
         component="div"
         {...dragHandleProps}
         sx={{ 
+          ...dragHandleProps.style,
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
           pb: 1,
-          ...dragHandleProps.style,
           position: 'relative',
           '&::before': {
             content: '""',
@@ -210,8 +215,8 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
                   onClick={handleRefreshChannels} 
                   size="small"
                   disabled={isRefreshing || state.isLoading}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
                 >
                   <RefreshIcon sx={{ 
                     animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
@@ -226,8 +231,8 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
                 <IconButton 
                   onClick={onClose} 
                   size="small"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
                 >
                   <CloseIcon />
                 </IconButton>
@@ -242,8 +247,8 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
                   onClick={handleBackToChannelList} 
                   size="small" 
                   sx={{ mr: 1 }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onMouseDown={stopEventPropagation}
+                  onTouchStart={stopEventPropagation}
                 >
                   <ArrowBackIcon />
                 </IconButton>
@@ -278,8 +283,8 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
               <IconButton 
                 onClick={onClose} 
                 size="small"
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
+                onMouseDown={stopEventPropagation}
+                onTouchStart={stopEventPropagation}
               >
                 <CloseIcon />
               </IconButton>

@@ -31,9 +31,13 @@ interface UseDraggableOptions {
   resetOnOpen?: boolean; // 開くたびに初期位置にリセットするか
 }
 
+// パネルサイズの定数
+const PANEL_WIDTH = 350;
+const PANEL_HEIGHT = 500;
+
 export const useDraggable = (options: UseDraggableOptions = {}): DraggableState => {
   const {
-    defaultPosition = { x: window.innerWidth - 370, y: window.innerHeight - 580 }, // 右下のチャットボタン近く
+    defaultPosition = { x: window.innerWidth - PANEL_WIDTH - 20, y: window.innerHeight - PANEL_HEIGHT - 80 }, // 右下のチャットボタン近く
     bounds,
     storageKey = 'draggable-panel-position',
     resetOnOpen = false
@@ -48,8 +52,8 @@ export const useDraggable = (options: UseDraggableOptions = {}): DraggableState 
           const parsed = JSON.parse(stored);
           // 画面サイズが変わった場合の調整
           return {
-            x: Math.min(Math.max(parsed.x, 0), window.innerWidth - 350),
-            y: Math.min(Math.max(parsed.y, 0), window.innerHeight - 500)
+            x: Math.min(Math.max(parsed.x, 0), window.innerWidth - PANEL_WIDTH),
+            y: Math.min(Math.max(parsed.y, 0), window.innerHeight - PANEL_HEIGHT)
           };
         }
       } catch (error) {
@@ -78,8 +82,6 @@ export const useDraggable = (options: UseDraggableOptions = {}): DraggableState 
   // 境界チェックを行う関数
   const constrainPosition = useCallback((pos: Position): Position => {
     const padding = 20; // 画面端からの最小距離
-    const panelWidth = 350;
-    const panelHeight = 500;
 
     let constrainedX = pos.x;
     let constrainedY = pos.y;
@@ -87,13 +89,13 @@ export const useDraggable = (options: UseDraggableOptions = {}): DraggableState 
     // カスタム境界がある場合
     if (bounds) {
       if (bounds.left !== undefined) constrainedX = Math.max(constrainedX, bounds.left);
-      if (bounds.right !== undefined) constrainedX = Math.min(constrainedX, bounds.right - panelWidth);
+      if (bounds.right !== undefined) constrainedX = Math.min(constrainedX, bounds.right - PANEL_WIDTH);
       if (bounds.top !== undefined) constrainedY = Math.max(constrainedY, bounds.top);
-      if (bounds.bottom !== undefined) constrainedY = Math.min(constrainedY, bounds.bottom - panelHeight);
+      if (bounds.bottom !== undefined) constrainedY = Math.min(constrainedY, bounds.bottom - PANEL_HEIGHT);
     } else {
       // デフォルト境界（画面サイズ）
-      constrainedX = Math.max(padding, Math.min(constrainedX, window.innerWidth - panelWidth - padding));
-      constrainedY = Math.max(padding, Math.min(constrainedY, window.innerHeight - panelHeight - padding));
+      constrainedX = Math.max(padding, Math.min(constrainedX, window.innerWidth - PANEL_WIDTH - padding));
+      constrainedY = Math.max(padding, Math.min(constrainedY, window.innerHeight - PANEL_HEIGHT - padding));
     }
 
     return { x: constrainedX, y: constrainedY };
@@ -178,14 +180,22 @@ export const useDraggable = (options: UseDraggableOptions = {}): DraggableState 
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
-  // ウィンドウリサイズ時の位置調整
+  // ウィンドウリサイズ時の位置調整（デバウンス処理付き）
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
     const handleResize = () => {
-      setPosition(current => constrainPosition(current));
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setPosition(current => constrainPosition(current));
+      }, 100); // 100ms のデバウンス
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timeoutId);
+    };
   }, [constrainPosition]);
 
   // 位置リセット関数
