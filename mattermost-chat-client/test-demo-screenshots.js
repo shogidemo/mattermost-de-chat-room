@@ -10,8 +10,8 @@ async function takeDemoScreenshots() {
   try {
     console.log('📸 デモモードでスクリーンショット撮影を開始します...');
 
-    // 1. チャンネル選択画面（初期画面）
-    console.log('1. チャンネル選択画面を開きます...');
+    // 1. 本船選択画面（初期画面）
+    console.log('1. 本船選択画面を開きます...');
     await page.goto('http://localhost:5173');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
@@ -20,8 +20,8 @@ async function takeDemoScreenshots() {
       fullPage: true 
     });
 
-    // 2. チャンネルカードのホバー効果
-    console.log('2. チャンネルカードのホバー効果を確認します...');
+    // 2. 本船カードのホバー効果
+    console.log('2. 本船カードのホバー効果を確認します...');
     const firstCard = await page.locator('.MuiCard-root').first();
     if (await firstCard.count() > 0) {
       await firstCard.hover();
@@ -32,8 +32,8 @@ async function takeDemoScreenshots() {
       });
     }
 
-    // 3. 2番目のチャンネルカードをホバー
-    console.log('3. 別のチャンネルカードをホバーします...');
+    // 3. 2番目の本船カードをホバー
+    console.log('3. 別の本船カードをホバーします...');
     const secondCard = await page.locator('.MuiCard-root').nth(1);
     if (await secondCard.count() > 0) {
       await secondCard.hover();
@@ -44,8 +44,8 @@ async function takeDemoScreenshots() {
       });
     }
 
-    // 4. チャンネルを選択してメイン画面へ遷移
-    console.log('4. チャンネルを選択してメイン画面へ遷移します...');
+    // 4. 本船を選択してメイン画面へ遷移
+    console.log('4. 本船を選択してメイン画面へ遷移します...');
     await page.click('.MuiCard-root:first-child');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
@@ -66,8 +66,8 @@ async function takeDemoScreenshots() {
       });
     }
 
-    // 6. チャット画面を閉じて、再度チャンネル選択画面へ
-    console.log('6. ブラウザの戻るボタンで初期画面に戻ります...');
+    // 6. チャット画面を閉じて、再度本船選択画面へ
+    console.log('6. ブラウザの戻るボタンで本船選択画面に戻ります...');
     await page.reload();
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);

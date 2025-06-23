@@ -30,15 +30,15 @@ async function takeScreenshots() {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // 3. チャンネル選択画面
-    console.log('3. チャンネル選択画面を確認します...');
+    // 3. 本船選択画面
+    console.log('3. 本船選択画面を確認します...');
     await page.screenshot({ 
-      path: 'test-results/03-channel-selection.png',
+      path: 'test-results/03-vessel-selection.png',
       fullPage: true 
     });
 
-    // 4. チャンネルカードのホバー効果
-    console.log('4. チャンネルカードのホバー効果を確認します...');
+    // 4. 本船カードのホバー効果
+    console.log('4. 本船カードのホバー効果を確認します...');
     const firstCard = await page.locator('.MuiCard-root').first();
     if (firstCard) {
       await firstCard.hover();
@@ -49,8 +49,8 @@ async function takeScreenshots() {
       });
     }
 
-    // 5. チャンネルを選択してメイン画面へ遷移
-    console.log('5. チャンネルを選択します...');
+    // 5. 本船を選択してメイン画面へ遷移
+    console.log('5. 本船を選択します...');
     await page.click('.MuiCard-root:first-child');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);

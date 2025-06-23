@@ -34,23 +34,23 @@ async function testLoginFlow() {
     await page.click('button[type="submit"]');
     await page.waitForTimeout(3000);
 
-    // 3. チャンネル選択画面の確認
-    console.log('3. チャンネル選択画面を確認します...');
-    const hasChannelSelection = await page.locator('text=チャンネルを選択してください').count() > 0;
+    // 3. 本船選択画面の確認
+    console.log('3. 本船選択画面を確認します...');
+    const hasVesselSelection = await page.locator('text=管理中の本船を選択してください').count() > 0;
     
-    if (hasChannelSelection) {
-      console.log('✅ チャンネル選択画面が表示されました！');
+    if (hasVesselSelection) {
+      console.log('✅ 本船選択画面が表示されました！');
       await page.screenshot({ 
-        path: 'test-results/login-flow-03-channel-selection.png',
+        path: 'test-results/login-flow-03-vessel-selection.png',
         fullPage: true 
       });
       
-      // チャンネルカードの確認
-      const channelCards = await page.locator('.MuiCard-root').count();
-      console.log(`📋 表示されているチャンネル数: ${channelCards}`);
+      // 本船カードの確認
+      const vesselCards = await page.locator('.MuiCard-root').count();
+      console.log(`📋 表示されている本船数: ${vesselCards}`);
       
-      if (channelCards > 0) {
-        // 最初のチャンネルをホバー
+      if (vesselCards > 0) {
+        // 最初の本船をホバー
         await page.locator('.MuiCard-root').first().hover();
         await page.waitForTimeout(500);
         await page.screenshot({ 
@@ -58,7 +58,7 @@ async function testLoginFlow() {
           fullPage: true 
         });
         
-        // チャンネルを選択
+        // 本船を選択
         await page.locator('.MuiCard-root').first().click();
         await page.waitForTimeout(2000);
         await page.screenshot({ 
@@ -67,9 +67,9 @@ async function testLoginFlow() {
         });
       }
     } else {
-      console.log('❌ チャンネル選択画面が表示されませんでした');
+      console.log('❌ 本船選択画面が表示されませんでした');
       await page.screenshot({ 
-        path: 'test-results/login-flow-03-no-channel-selection.png',
+        path: 'test-results/login-flow-03-no-vessel-selection.png',
         fullPage: true 
       });
     }
