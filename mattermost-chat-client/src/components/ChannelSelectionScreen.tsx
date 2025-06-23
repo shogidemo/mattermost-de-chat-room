@@ -36,8 +36,17 @@ const ChannelSelectionScreen: React.FC<ChannelSelectionScreenProps> = ({
   channels, 
   onChannelSelect 
 }) => {
-  const { state, logout } = useApp();
+  const { state, logout, refreshChannels } = useApp();
   const { user } = state;
+
+  // コンポーネントマウント時にチャンネル情報を更新
+  React.useEffect(() => {
+    if (user) {
+      refreshChannels().catch(error => {
+        console.error('チャンネル情報の取得に失敗しました:', error);
+      });
+    }
+  }, [user, refreshChannels]);
 
   const handleLogout = async () => {
     try {

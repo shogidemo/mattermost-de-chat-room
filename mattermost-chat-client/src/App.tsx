@@ -241,8 +241,9 @@ const AppContent: React.FC = () => {
           console.log('ℹ️ 未ログイン状態 - ログインしてください');
           setMergedChannels([]);
         } else {
-          console.log('⚠️ ログイン済みだがチャンネルなし - Mattermostでチャンネルを作成してください');
-          setMergedChannels([]);
+          console.log('⚠️ ログイン済みだがチャンネルなし - 一時的にモックチャンネルを表示');
+          // チャンネル情報が取得されるまでモックチャンネルを表示
+          setMergedChannels(mockChannels);
         }
       }
     };

@@ -12,7 +12,7 @@ async function takeDemoScreenshots() {
 
     // 1. チャンネル選択画面（初期画面）
     console.log('1. チャンネル選択画面を開きます...');
-    await page.goto('http://localhost:5174');
+    await page.goto('http://localhost:5173');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     await page.screenshot({ 
