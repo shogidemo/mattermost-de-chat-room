@@ -842,13 +842,17 @@ class MattermostClient {
    * チーム名でチームを検索
    */
   async getTeamByName(teamName: string): Promise<Team | null> {
+    console.log(`🔍 [API] チーム検索: ${teamName}`);
     try {
       const response = await this.axiosInstance.get<Team>(`/teams/name/${teamName}`);
+      console.log(`✅ [API] チーム発見: ${response.data.display_name}`);
       return response.data;
     } catch (error: any) {
       if (error.status_code === 404) {
+        console.log(`⚠️ [API] チームが存在しません: ${teamName}`);
         return null; // チームが存在しない
       }
+      console.error(`❌ [API] チーム検索エラー:`, error);
       throw error;
     }
   }
@@ -864,9 +868,19 @@ class MattermostClient {
       description: description || `${displayName}の船舶運航管理チーム`,
     };
 
-    console.log('🚢 船舶チーム作成:', teamData);
-    const response = await this.axiosInstance.post<Team>('/teams', teamData);
-    return response.data;
+    console.log('🚢 [API] 船舶チーム作成試行:', teamData);
+    try {
+      const response = await this.axiosInstance.post<Team>('/teams', teamData);
+      console.log('✅ [API] チーム作成成功:', response.data.display_name);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [API] チーム作成エラー:', {
+        status: error.status_code,
+        message: error.message,
+        detailed_error: error.detailed_error
+      });
+      throw error;
+    }
   }
 
   /**
@@ -900,13 +914,29 @@ class MattermostClient {
         type: newTeam.type
       });
       return newTeam;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ 船舶チーム取得/作成エラー:', error);
       console.error('エラー詳細:', {
         teamName,
         displayName,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        status_code: error.status_code,
+        id: error.id
       });
+      
+      // エラーメッセージを改善
+      if (error.status_code === 403 || error.id === 'api.team.create_team.permissions.app_error') {
+        const improvedError = new Error(
+          `チーム作成権限がありません。\n\n` +
+          `Mattermost管理者に以下を依頼してください：\n` +
+          `1. sho1ユーザーに「Create Public Teams」権限を付与\n` +
+          `2. または、以下のチームを作成：\n` +
+          `   - チーム名: ${teamName}\n` +
+          `   - 表示名: ${displayName}`
+        );
+        throw improvedError;
+      }
+      
       throw error;
     }
   }
@@ -989,7 +1019,10 @@ class MattermostClient {
           }
         } else if (error.status_code === 403) {
           console.error('❌ チャンネル作成権限がありません');
-          console.log('💡 管理者にチャンネル作成権限の付与を依頼してください');
+          console.log('💡 解決策:');
+          console.log('   1. Mattermost管理者にsho1ユーザーへの「Create Public Channels」権限付与を依頼');
+          console.log(`   2. または、${teamId}チームに以下のチャンネルを手動作成:`);
+          console.log(`      - ${channelTemplate.name} (${channelTemplate.display_name})`);
         } else {
           console.error(`❌ チャンネル作成エラー (${channelTemplate.name}):`, error);
           console.error('エラー詳細:', {

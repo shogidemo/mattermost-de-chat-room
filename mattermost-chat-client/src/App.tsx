@@ -321,6 +321,11 @@ const AppContent: React.FC = () => {
       } catch (error) {
         console.error('❌ 船舶チーム切り替えエラー:', error);
         console.error('エラー詳細:', error);
+        
+        // エラーを画面に表示
+        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+        alert(`船舶チーム切り替えに失敗しました:\n\n${errorMessage}`);
+        
         // エラーが発生してもメイン画面には遷移する
       }
       

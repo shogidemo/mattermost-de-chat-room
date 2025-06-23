@@ -1352,6 +1352,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       userId: state.user?.id || 'なし'
     });
     
+    // デバッグ：マッピング情報を確認
+    const vesselInfo = getVesselInfo(vesselId);
+    console.log('🔍 船舶マッピング情報:', vesselInfo);
+    
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
