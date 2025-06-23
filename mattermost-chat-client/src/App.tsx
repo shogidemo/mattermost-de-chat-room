@@ -9,6 +9,7 @@ import LoginForm from './components/LoginForm';
 import MainScreen from './components/MainScreen';
 import ChatBubble from './components/ChatBubble';
 import ChannelListPopup from './components/ChannelListPopup';
+import ChannelSelectionScreen from './components/ChannelSelectionScreen';
 
 // Material-UIテーマ設定
 const theme = createTheme({
@@ -105,7 +106,7 @@ const mockChannels = [
 ];
 
 // 画面状態の型定義
-type ScreenState = 'login' | 'main';
+type ScreenState = 'login' | 'channel-selection' | 'main';
 
 // 開発モード：ログイン不要でチャット機能をテスト（無効化してMattermost連携）
 const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
@@ -114,9 +115,10 @@ const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
 const AppContent: React.FC = () => {
   const { state } = useApp();
   const { user, channels: realChannels, currentTeam } = state;
-  const [currentScreen, setCurrentScreen] = React.useState<ScreenState>(DEVELOPMENT_MODE ? 'main' : 'login');
+  const [currentScreen, setCurrentScreen] = React.useState<ScreenState>(DEVELOPMENT_MODE ? 'channel-selection' : 'login');
   const [showChannelPopup, setShowChannelPopup] = React.useState(false);
-  const [mergedChannels, setMergedChannels] = React.useState(mockChannels);
+  const [mergedChannels, setMergedChannels] = React.useState(DEVELOPMENT_MODE ? mockChannels : []);
+  const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null);
 
   // ユーザーログイン状態に基づく画面制御
   React.useEffect(() => {
@@ -124,7 +126,7 @@ const AppContent: React.FC = () => {
       if (!user) {
         setCurrentScreen('login');
       } else if (currentScreen === 'login') {
-        setCurrentScreen('main');
+        setCurrentScreen('channel-selection');
       }
     }
   }, [user, currentScreen]);
@@ -138,6 +140,12 @@ const AppContent: React.FC = () => {
     };
 
     const integrateChannelLists = () => {
+      // 開発モードの場合はモックチャンネルを使用
+      if (DEVELOPMENT_MODE) {
+        debugLog('開発モード：モックチャンネルを使用');
+        return;
+      }
+      
       debugLog('チャンネルリスト統合開始', { 
         realChannelsCount: realChannels.length,
         currentTeam: currentTeam?.display_name || currentTeam?.name
@@ -249,8 +257,24 @@ const AppContent: React.FC = () => {
     setShowChannelPopup(true);
   };
 
+  const handleChannelSelect = (channelId: string) => {
+    setSelectedChannelId(channelId);
+    setCurrentScreen('main');
+    console.log(`[チャンネル選択] チャンネルID: ${channelId} が選択されました`);
+  };
+
   if (!DEVELOPMENT_MODE && !user) {
     return <LoginForm />;
+  }
+
+  // 画面の切り替えロジック
+  if (currentScreen === 'channel-selection') {
+    return (
+      <ChannelSelectionScreen
+        channels={mergedChannels}
+        onChannelSelect={handleChannelSelect}
+      />
+    );
   }
 
   // メイン画面（チャットバブル付き）
@@ -265,6 +289,7 @@ const AppContent: React.FC = () => {
         open={showChannelPopup}
         onClose={() => setShowChannelPopup(false)}
         channels={mergedChannels}
+        initialChannelId={selectedChannelId}
       />
     </>
   );
