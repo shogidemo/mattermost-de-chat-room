@@ -279,25 +279,48 @@ const AppContent: React.FC = () => {
     setShowChannelPopup(true);
   };
 
-  const handleChannelSelect = (channelId: string) => {
-    setSelectedChannelId(channelId);
-    setCurrentScreen('main');
-    console.log(`[チャンネル選択] チャンネルID: ${channelId} が選択されました`);
-  };
+  // 未使用のため削除（船舶選択で自動的にチーム切り替えを行うため）
+  // const handleChannelSelect = (channelId: string) => {
+  //   setSelectedChannelId(channelId);
+  //   setCurrentScreen('main');
+  //   console.log(`[チャンネル選択] チャンネルID: ${channelId} が選択されました`);
+  // };
 
   const handleVesselSelect = async (vesselId: string) => {
     const vessel = mockVessels.find(v => v.id === vesselId);
     if (vessel) {
       setSelectedVessel(vessel);
-      console.log(`[本船選択] 本船: ${vessel.name} が選択されました`);
+      console.log('='.repeat(50));
+      console.log(`🚢 [本船選択] 本船: ${vessel.name} (ID: ${vesselId}) が選択されました`);
+      console.log('='.repeat(50));
       
       try {
         // 船舶専用チームに切り替え
-        console.log('🚢 船舶専用チームに切り替え開始');
-        await selectVesselTeam(vesselId);
+        console.log('🔄 船舶専用チームに切り替え開始');
+        console.log('📋 切り替え前の状態:', {
+          currentTeam: state.currentTeam?.display_name || state.currentTeam?.name || 'なし',
+          currentTeamId: state.currentTeam?.id || 'なし',
+          channelCount: state.channels.length
+        });
+        
+        const selectedTeam = await selectVesselTeam(vesselId);
+        
         console.log('✅ 船舶専用チーム切り替え完了');
+        console.log('📋 切り替え後の期待チーム:', selectedTeam.display_name);
+        
+        // 切り替え後の状態確認（少し遅延して確認）
+        setTimeout(() => {
+          console.log('📋 切り替え後の実際の状態:', {
+            currentTeam: state.currentTeam?.display_name || state.currentTeam?.name || 'なし',
+            currentTeamId: state.currentTeam?.id || 'なし',
+            channelCount: state.channels.length,
+            channels: state.channels.map(ch => ch.display_name || ch.name)
+          });
+        }, 1000);
+        
       } catch (error) {
         console.error('❌ 船舶チーム切り替えエラー:', error);
+        console.error('エラー詳細:', error);
         // エラーが発生してもメイン画面には遷移する
       }
       

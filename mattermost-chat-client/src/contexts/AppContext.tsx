@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useMemo } from
 import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
 import type { AppState, User, Team, Channel, Post, WebSocketEvent, ChannelWithPreview } from '../types/mattermost';
-import { getTeamNameByVesselId, getTeamDisplayNameByVesselId, getVesselInfo } from '../utils/vesselTeamMapping';
+import { getTeamNameByVesselId, getTeamDisplayNameByVesselId, getVesselInfo, getAllVesselInfos } from '../utils/vesselTeamMapping';
 
 // ローカルストレージからメッセージを復元
 const restorePostsFromStorage = (): Record<string, Post[]> => {
@@ -809,7 +809,32 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         await selectChannel(defaultChannel);
       } else {
         console.warn('⚠️ このチームにはチャンネルがありません');
-        console.log('💡 Mattermostで最初のチャンネルを作成してください');
+        console.log('🔄 デフォルトチャンネルを作成します...');
+        
+        // 船舶チームの場合、デフォルトチャンネルを作成
+        try {
+          const vesselInfo = getAllVesselInfos().find(info => info.teamName === team.name);
+          if (vesselInfo) {
+            console.log('🚢 船舶チーム検出:', vesselInfo.name);
+            const createdChannels = await client.createDefaultVesselChannels(team.id, vesselInfo.name);
+            if (createdChannels.length > 0) {
+              console.log('✅ デフォルトチャンネル作成成功');
+              // チャンネルリストを再取得
+              const updatedChannels = await client.getMyChannelsForTeam(state.user.id, team.id);
+              dispatch({ type: 'SET_CHANNELS', payload: updatedChannels });
+              
+              // 最初のチャンネルを選択
+              if (updatedChannels.length > 0) {
+                await selectChannel(updatedChannels[0]);
+              }
+            }
+          } else {
+            console.log('⚠️ 船舶チームではないため、手動でチャンネルを作成してください');
+          }
+        } catch (channelCreateError) {
+          console.error('❌ デフォルトチャンネル作成エラー:', channelCreateError);
+          console.log('💡 Mattermostで手動でチャンネルを作成してください');
+        }
       }
     } catch (error) {
       console.error('❌ チーム選択エラー:', error);
@@ -1203,54 +1228,164 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const teamDisplayName = getTeamDisplayNameByVesselId(vesselId);
     const vesselInfo = getVesselInfo(vesselId);
 
+    console.log('📋 船舶マッピング結果:', {
+      vesselId,
+      teamName,
+      teamDisplayName,
+      vesselInfo: vesselInfo ? `${vesselInfo.name} (${vesselInfo.callSign})` : 'なし'
+    });
+
     if (!teamName || !teamDisplayName || !vesselInfo) {
       throw new Error(`船舶ID ${vesselId} の情報が見つかりません`);
     }
 
     try {
       // チームを取得または作成
+      console.log('🔄 Mattermostチーム取得/作成API呼び出し:', { teamName, teamDisplayName });
       const team = await client.getOrCreateVesselTeam(teamName, teamDisplayName);
-      console.log('✅ 船舶チーム取得/作成完了:', team.display_name);
+      console.log('✅ 船舶チーム取得/作成完了:', {
+        teamId: team.id,
+        teamDisplayName: team.display_name,
+        teamName: team.name
+      });
 
       // ユーザーをチームに追加
+      console.log('🔄 ユーザーのチーム参加処理:', { teamId: team.id, userId: state.user.id });
       await client.addUserToVesselTeam(team.id, state.user.id);
+      console.log('✅ ユーザーのチーム参加完了');
 
       // デフォルトチャンネルを作成（初回のみ）
       try {
+        console.log('🔄 デフォルトチャンネル作成/確認:', { teamId: team.id, vesselName: vesselInfo.name });
         const defaultChannels = await client.createDefaultVesselChannels(team.id, vesselInfo.name);
-        console.log('✅ デフォルトチャンネル確認完了:', defaultChannels.length);
+        console.log('✅ デフォルトチャンネル確認完了:', {
+          count: defaultChannels.length,
+          channels: defaultChannels.map(ch => ch.display_name)
+        });
+        
+        // チャンネルが作成されなかった場合の追加処理
+        if (defaultChannels.length === 0) {
+          console.warn('⚠️ デフォルトチャンネルが作成されませんでした。既存のチャンネルを確認中...');
+          // チームのチャンネルリストを再取得
+          const teamChannels = await client.getMyChannelsForTeam(state.user.id, team.id);
+          if (teamChannels.length === 0) {
+            console.error('❌ チームにチャンネルが存在しません');
+          } else {
+            console.log('✅ 既存チャンネル発見:', teamChannels.map(ch => ch.display_name || ch.name));
+          }
+        }
       } catch (channelError) {
         console.warn('⚠️ デフォルトチャンネル作成でエラー（継続）:', channelError);
+        // エラーでも継続 - チームは使用可能
       }
 
       return team;
     } catch (error) {
       console.error('❌ 船舶チーム取得/作成エラー:', error);
+      
+      // フォールバック: チーム作成権限がない場合は既存のチームを使用
+      if (error instanceof Error && (
+        error.message.includes('permission') ||
+        error.message.includes('forbidden') ||
+        error.message.includes('403')
+      )) {
+        console.warn('⚠️ チーム作成権限なし、既存チームの検索を試行');
+        try {
+          // 既存のチームから船舶関連のチームを検索
+          const userTeams = await client.getTeamsForUser(state.user.id);
+          console.log('📋 ユーザーの既存チーム:', userTeams.map(t => t.display_name));
+          
+          // 1. まず正確なチーム名で検索
+          const exactTeam = userTeams.find(team => team.name === teamName);
+          if (exactTeam) {
+            console.log('✅ 正確なチーム名で発見（フォールバック）:', exactTeam.display_name);
+            
+            // チームにチャンネルがあるか確認し、なければ作成
+            try {
+              const teamChannels = await client.getMyChannelsForTeam(state.user.id, exactTeam.id);
+              if (teamChannels.length === 0) {
+                console.log('🔄 既存チームにチャンネルがないため作成中...');
+                await client.createDefaultVesselChannels(exactTeam.id, vesselInfo.name);
+                console.log('✅ デフォルトチャンネル作成完了');
+              }
+            } catch (channelCheckError) {
+              console.warn('⚠️ チャンネル確認/作成エラー:', channelCheckError);
+            }
+            
+            return exactTeam;
+          }
+          
+          // 2. 船舶名に関連するチームを検索
+          const vesselRelatedTeam = userTeams.find(team => 
+            team.display_name.includes(vesselInfo.name) ||
+            team.name.includes(teamName.replace('-team', '')) ||
+            team.display_name.includes('チーム')
+          );
+          
+          if (vesselRelatedTeam) {
+            console.log('✅ 関連チーム発見（フォールバック）:', vesselRelatedTeam.display_name);
+            return vesselRelatedTeam;
+          }
+          
+          // 3. 関連チームがない場合は、チーム作成を管理者に依頼するエラーを投げる
+          console.error('❌ 船舶関連チームが見つからず、作成権限もありません');
+          console.log('💡 以下のチームを管理者が作成してください:', { teamName, teamDisplayName });
+          throw new Error(`船舶専用チーム「${teamDisplayName}」が存在せず、作成権限がありません。管理者にチーム作成を依頼してください。`);
+        } catch (fallbackError) {
+          console.error('❌ フォールバック処理も失敗:', fallbackError);
+          throw fallbackError;
+        }
+      }
+      
       throw error;
     }
   };
 
   const selectVesselTeam = async (vesselId: string): Promise<Team> => {
-    console.log('🚢 船舶専用チーム選択開始:', { vesselId });
+    console.log('='.repeat(60));
+    console.log('🚢 AppContext: 船舶専用チーム選択開始');
+    console.log('📋 入力:', { vesselId });
+    console.log('📋 現在の状態:', {
+      currentTeam: state.currentTeam?.display_name || 'なし',
+      currentTeamId: state.currentTeam?.id || 'なし',
+      userLoggedIn: !!state.user,
+      userId: state.user?.id || 'なし'
+    });
+    
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
       // 船舶チームを取得または作成
+      console.log('🔄 船舶チーム取得/作成開始...');
       const team = await getOrCreateVesselTeam(vesselId);
+      console.log('✅ 船舶チーム取得/作成完了:', {
+        teamId: team.id,
+        teamName: team.display_name,
+        teamUrl: team.name
+      });
       
       // チームを選択（既存のselectTeam関数を利用）
+      console.log('🔄 チーム選択処理開始...');
       await selectTeam(team);
+      console.log('✅ チーム選択処理完了');
       
       console.log('✅ 船舶チーム選択完了:', { 
         vesselId, 
-        teamName: team.display_name, 
+        teamName: team.display_name,
+        teamId: team.id,
         channelCount: state.channels.length 
       });
+      console.log('='.repeat(60));
 
       return team;
     } catch (error) {
       console.error('❌ 船舶チーム選択エラー:', error);
+      console.error('エラー詳細:', {
+        vesselId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : '船舶チーム選択に失敗しました' });
       throw error;
     } finally {
@@ -1268,6 +1403,47 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           localStorage.removeItem('mattermost_current_team');
           localStorage.removeItem('mattermost_current_channel');
           console.log('🗑️ Mattermostデータをクリアしました。ページをリロードしてください。');
+        },
+        // 船舶チーム関連のデバッグ関数
+        testVesselTeam: async (vesselId: string) => {
+          console.log('🧪 船舶チームテスト開始:', { vesselId });
+          try {
+            const result = await selectVesselTeam(vesselId);
+            console.log('✅ 船舶チームテスト成功:', result);
+            return result;
+          } catch (error) {
+            console.error('❌ 船舶チームテスト失敗:', error);
+            throw error;
+          }
+        },
+        showCurrentState: () => {
+          console.log('📊 現在の詳細状態:');
+          console.log('- ユーザー:', state.user?.username || 'ログインしていません');
+          console.log('- 現在のチーム:', state.currentTeam?.display_name || 'チームが選択されていません');
+          console.log('- チームID:', state.currentTeam?.id || 'なし');
+          console.log('- チャンネル数:', state.channels.length);
+          console.log('- チャンネル一覧:', state.channels.map(ch => `${ch.display_name || ch.name} (${ch.type})`));
+          console.log('- WebSocket接続:', state.isConnected);
+          console.log('- ローディング中:', state.isLoading);
+          console.log('- エラー:', state.error || 'なし');
+        },
+        getAllTeams: async () => {
+          if (!state.user) {
+            console.log('❌ ユーザーがログインしていません');
+            return;
+          }
+          try {
+            const teams = await client.getTeamsForUser(state.user.id);
+            console.log('📋 ユーザーの全チーム:', teams.map(t => ({
+              id: t.id,
+              name: t.name,
+              display_name: t.display_name,
+              type: t.type
+            })));
+            return teams;
+          } catch (error) {
+            console.error('❌ チーム取得エラー:', error);
+          }
         },
         showState: () => {
           console.log('🔍 現在の状態:', {

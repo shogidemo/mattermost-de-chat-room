@@ -873,21 +873,40 @@ class MattermostClient {
    * 船舶チームを取得または作成
    */
   async getOrCreateVesselTeam(teamName: string, displayName: string): Promise<Team> {
+    console.log('🔄 MattermostAPI: 船舶チーム取得/作成開始');
+    console.log('📋 入力パラメータ:', { teamName, displayName });
+    
     try {
       // まず既存のチームを検索
+      console.log('🔍 既存チーム検索中:', teamName);
       const existingTeam = await this.getTeamByName(teamName);
       if (existingTeam) {
-        console.log('✅ 既存の船舶チーム発見:', existingTeam.display_name);
+        console.log('✅ 既存の船舶チーム発見:', {
+          id: existingTeam.id,
+          name: existingTeam.name,
+          display_name: existingTeam.display_name,
+          type: existingTeam.type
+        });
         return existingTeam;
       }
 
       // チームが存在しない場合は作成
-      console.log('🏗️ 船舶チーム作成開始:', { teamName, displayName });
+      console.log('🏗️ 船舶チーム作成開始（既存チームなし）:', { teamName, displayName });
       const newTeam = await this.createVesselTeam(teamName, displayName);
-      console.log('✅ 船舶チーム作成完了:', newTeam.display_name);
+      console.log('✅ 船舶チーム作成完了:', {
+        id: newTeam.id,
+        name: newTeam.name,
+        display_name: newTeam.display_name,
+        type: newTeam.type
+      });
       return newTeam;
     } catch (error) {
       console.error('❌ 船舶チーム取得/作成エラー:', error);
+      console.error('エラー詳細:', {
+        teamName,
+        displayName,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -917,23 +936,26 @@ class MattermostClient {
    * 船舶チーム用のデフォルトチャンネルを作成
    */
   async createDefaultVesselChannels(teamId: string, vesselName: string): Promise<Channel[]> {
+    // 船舶名からチャンネル名のプレフィックスを生成
+    const vesselPrefix = vesselName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    
     const defaultChannels = [
       {
-        name: 'general',
+        name: `${vesselPrefix}-general`,
         display_name: '一般',
         purpose: `${vesselName}の一般的な連絡事項`,
         header: `${vesselName}チームの一般チャンネル`,
         type: 'O' as const,
       },
       {
-        name: 'operations',
+        name: `${vesselPrefix}-operations`,
         display_name: '運航管理',
         purpose: `${vesselName}の運航状況・管理情報`,
         header: `${vesselName}の運航管理専用チャンネル`,
         type: 'O' as const,
       },
       {
-        name: 'maintenance',
+        name: `${vesselPrefix}-maintenance`,
         display_name: 'メンテナンス',
         purpose: `${vesselName}のメンテナンス・保守情報`,
         header: `${vesselName}のメンテナンス情報専用チャンネル`,
@@ -965,13 +987,59 @@ class MattermostClient {
           } catch (getError) {
             console.warn(`⚠️ 既存チャンネル取得失敗: ${channelTemplate.name}`);
           }
+        } else if (error.status_code === 403) {
+          console.error('❌ チャンネル作成権限がありません');
+          console.log('💡 管理者にチャンネル作成権限の付与を依頼してください');
         } else {
           console.error(`❌ チャンネル作成エラー (${channelTemplate.name}):`, error);
+          console.error('エラー詳細:', {
+            status_code: error.status_code,
+            message: error.message,
+            detailed_error: error.detailed_error
+          });
         }
       }
     }
 
     return createdChannels;
+  }
+
+  /**
+   * 単一のデフォルトチャンネルを作成（フォールバック用）
+   */
+  async createSingleVesselChannel(teamId: string, vesselName: string): Promise<Channel | null> {
+    const vesselPrefix = vesselName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    
+    try {
+      const channelData: CreateChannelRequest = {
+        name: `${vesselPrefix}-general`,
+        display_name: `${vesselName} 一般`,
+        purpose: `${vesselName}チームの一般的な連絡事項`,
+        header: `${vesselName}チームの一般チャンネル`,
+        type: 'O',
+        team_id: teamId,
+      };
+
+      const channel = await this.createChannel(channelData);
+      console.log(`✅ 船舶チャンネル作成成功: ${channel.display_name}`);
+      return channel;
+    } catch (error: any) {
+      if (error.status_code === 400 && error.message?.includes('already exists')) {
+        console.log('ℹ️ チャンネルは既に存在します');
+        // 既存チャンネルを取得して返す
+        try {
+          const response = await this.axiosInstance.get<Channel>(
+            `/teams/${teamId}/channels/name/${vesselPrefix}-general`
+          );
+          return response.data;
+        } catch (getError) {
+          console.error('❌ 既存チャンネル取得失敗');
+          return null;
+        }
+      }
+      console.error('❌ チャンネル作成エラー:', error);
+      return null;
+    }
   }
 }
 

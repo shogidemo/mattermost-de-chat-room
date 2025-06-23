@@ -226,7 +226,9 @@ const ChannelSelector: React.FC<ChannelSelectorProps> = ({
                   color="text.secondary"
                   sx={{ lineHeight: 1 }}
                 >
-                  船舶専用チーム
+                  {currentTeam.display_name.includes('チーム') ? 
+                    currentTeam.display_name.replace(' チーム', '') + ' 船舶チーム' : 
+                    '船舶専用チーム'}
                 </Typography>
               )}
             </Box>
