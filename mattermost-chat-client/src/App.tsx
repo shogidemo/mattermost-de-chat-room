@@ -9,6 +9,7 @@ import LoginForm from './components/LoginForm';
 import MainScreen from './components/MainScreen';
 import ChatBubble from './components/ChatBubble';
 import ChannelListPopup from './components/ChannelListPopup';
+import VesselSelectionScreen from './components/VesselSelectionScreen';
 
 // Material-UIテーマ設定
 const theme = createTheme({
@@ -46,66 +47,85 @@ const App: React.FC = () => {
   );
 };
 
-// モックチャンネルデータ
-const mockChannels = [
+// モック本船データ
+const mockVessels = [
   {
-    id: 'mhm57ysh9jbj78yyof5cshiu6w',
-    name: '営業チーム',
-    lastMessage: '明日の会議の件ですが...',
-    timestamp: '14:30',
-    unreadCount: 3,
-    icon: '👥',
-    isOnline: true,
+    id: 'vessel-1',
+    name: 'Pacific Glory',
+    callSign: 'VRPG7',
+    cargo: '小麦',
+    cargoAmount: '50,000トン',
+    origin: 'オーストラリア',
+    destination: '横浜港',
+    status: '航行中',
+    eta: '2025-06-25',
+    progress: 75,
+    icon: '🚢',
+    lastUpdate: '2時間前',
   },
   {
-    id: '2',
-    name: '開発チーム',
-    lastMessage: 'バグ修正完了しました',
-    timestamp: '12:15',
-    unreadCount: 0,
-    icon: '💻',
-    isOnline: true,
+    id: 'vessel-2',
+    name: 'Ocean Dream',
+    callSign: 'JXOD8',
+    cargo: '大豆',
+    cargoAmount: '30,000トン',
+    origin: 'ブラジル',
+    destination: '神戸港',
+    status: '入港準備中',
+    eta: '2025-06-23',
+    progress: 95,
+    icon: '🛳️',
+    lastUpdate: '30分前',
   },
   {
-    id: '3',
-    name: '品質管理',
-    lastMessage: '検査結果を共有します',
-    timestamp: '11:45',
-    unreadCount: 1,
-    icon: '🔍',
-    isOnline: false,
+    id: 'vessel-3',
+    name: 'Grain Master',
+    callSign: 'PHGM9',
+    cargo: 'とうもろこし',
+    cargoAmount: '40,000トン',
+    origin: 'アメリカ',
+    destination: '名古屋港',
+    status: '荷揚げ中',
+    eta: '到着済み',
+    progress: 100,
+    icon: '⚓',
+    lastUpdate: '1時間前',
   },
   {
-    id: '4',
-    name: '物流チーム',
-    lastMessage: '配送完了報告',
-    timestamp: '昨日',
-    unreadCount: 0,
-    icon: '🚛',
-    isOnline: true,
+    id: 'vessel-4',
+    name: 'Star Carrier',
+    callSign: 'SGSC5',
+    cargo: '小麦',
+    cargoAmount: '35,000トン',
+    origin: 'カナダ',
+    destination: '千葉港',
+    status: '検査中',
+    eta: '到着済み',
+    progress: 100,
+    icon: '🚢',
+    lastUpdate: '3時間前',
   },
   {
-    id: '5',
-    name: '佐藤チーム',
-    lastMessage: '佐藤さんからの最新アップデート',
-    timestamp: '15:45',
-    unreadCount: 2,
-    icon: '👤',
-    isOnline: true,
-  },
-  {
-    id: '6',
-    name: '佐藤プロジェクト',
-    lastMessage: 'プロジェクト進捗報告',
-    timestamp: '13:20',
-    unreadCount: 1,
-    icon: '📋',
-    isOnline: true,
+    id: 'vessel-5',
+    name: 'Blue Horizon',
+    callSign: 'PABH2',
+    cargo: '大麦',
+    cargoAmount: '25,000トン',
+    origin: 'ロシア',
+    destination: '博多港',
+    status: '出港準備中',
+    eta: '2025-07-01',
+    progress: 10,
+    icon: '🛳️',
+    lastUpdate: '5時間前',
   },
 ];
 
+// モックチャンネルデータ（チャット用）
+const mockChannels: any[] = [];
+
 // 画面状態の型定義
-type ScreenState = 'login' | 'main';
+type ScreenState = 'login' | 'vessel-selection' | 'main';
 
 // 開発モード：ログイン不要でチャット機能をテスト（無効化してMattermost連携）
 const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
@@ -114,9 +134,11 @@ const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
 const AppContent: React.FC = () => {
   const { state } = useApp();
   const { user, channels: realChannels, currentTeam } = state;
-  const [currentScreen, setCurrentScreen] = React.useState<ScreenState>(DEVELOPMENT_MODE ? 'main' : 'login');
+  const [currentScreen, setCurrentScreen] = React.useState<ScreenState>(DEVELOPMENT_MODE ? 'vessel-selection' : 'login');
+  const [selectedVessel, setSelectedVessel] = React.useState<typeof mockVessels[0] | null>(null);
   const [showChannelPopup, setShowChannelPopup] = React.useState(false);
-  const [mergedChannels, setMergedChannels] = React.useState(mockChannels);
+  const [mergedChannels, setMergedChannels] = React.useState(DEVELOPMENT_MODE ? mockChannels : []);
+  const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null);
 
   // ユーザーログイン状態に基づく画面制御
   React.useEffect(() => {
@@ -124,7 +146,7 @@ const AppContent: React.FC = () => {
       if (!user) {
         setCurrentScreen('login');
       } else if (currentScreen === 'login') {
-        setCurrentScreen('main');
+        setCurrentScreen('vessel-selection');
       }
     }
   }, [user, currentScreen]);
@@ -138,6 +160,12 @@ const AppContent: React.FC = () => {
     };
 
     const integrateChannelLists = () => {
+      // 開発モードの場合はモックチャンネルを使用
+      if (DEVELOPMENT_MODE) {
+        debugLog('開発モード：モックチャンネルを使用');
+        return;
+      }
+      
       debugLog('チャンネルリスト統合開始', { 
         realChannelsCount: realChannels.length,
         currentTeam: currentTeam?.display_name || currentTeam?.name
@@ -233,7 +261,8 @@ const AppContent: React.FC = () => {
           console.log('ℹ️ 未ログイン状態 - ログインしてください');
           setMergedChannels([]);
         } else {
-          console.log('⚠️ ログイン済みだがチャンネルなし - Mattermostでチャンネルを作成してください');
+          console.log('⚠️ ログイン済みだがチャンネルなし - 一時的にモックチャンネルを表示');
+          // チャンネル情報が取得されるまで空の配列を設定
           setMergedChannels([]);
         }
       }
@@ -249,14 +278,41 @@ const AppContent: React.FC = () => {
     setShowChannelPopup(true);
   };
 
+  const handleChannelSelect = (channelId: string) => {
+    setSelectedChannelId(channelId);
+    setCurrentScreen('main');
+    console.log(`[チャンネル選択] チャンネルID: ${channelId} が選択されました`);
+  };
+
+  const handleVesselSelect = (vesselId: string) => {
+    const vessel = mockVessels.find(v => v.id === vesselId);
+    if (vessel) {
+      setSelectedVessel(vessel);
+      // 本船に対応するチャンネルIDを設定（本船IDをチャンネルIDとして使用）
+      setSelectedChannelId(vesselId);
+      setCurrentScreen('main');
+      console.log(`[本船選択] 本船: ${vessel.name} が選択されました`);
+    }
+  };
+
   if (!DEVELOPMENT_MODE && !user) {
     return <LoginForm />;
+  }
+
+  // 画面の切り替えロジック
+  if (currentScreen === 'vessel-selection') {
+    return (
+      <VesselSelectionScreen
+        vessels={mockVessels}
+        onVesselSelect={handleVesselSelect}
+      />
+    );
   }
 
   // メイン画面（チャットバブル付き）
   return (
     <>
-      <MainScreen onChatClick={handleChatBubbleClick} />
+      <MainScreen onChatClick={handleChatBubbleClick} selectedVessel={selectedVessel} />
       <ChatBubble 
         unreadCount={totalUnreadCount}
         onClick={handleChatBubbleClick}
@@ -265,6 +321,7 @@ const AppContent: React.FC = () => {
         open={showChannelPopup}
         onClose={() => setShowChannelPopup(false)}
         channels={mergedChannels}
+        initialChannelId={selectedChannelId}
       />
     </>
   );

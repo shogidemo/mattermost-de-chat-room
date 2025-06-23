@@ -19,11 +19,27 @@ import {
 } from '@mui/icons-material';
 import { useApp } from '../contexts/AppContext';
 
-interface MainScreenProps {
-  onChatClick?: () => void;
+interface Vessel {
+  id: string;
+  name: string;
+  callSign: string;
+  cargo: string;
+  cargoAmount: string;
+  origin: string;
+  destination: string;
+  status: string;
+  eta: string;
+  progress: number;
+  icon: string;
+  lastUpdate: string;
 }
 
-const MainScreen: React.FC<MainScreenProps> = () => {
+interface MainScreenProps {
+  onChatClick?: () => void;
+  selectedVessel?: Vessel | null;
+}
+
+const MainScreen: React.FC<MainScreenProps> = ({ selectedVessel }) => {
   const { state, logout } = useApp();
   const { user } = state;
 
@@ -48,7 +64,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
       <AppBar position="static" elevation={1}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            穀物輸入管理システム
+            {selectedVessel ? `穀物輸入管理システム - ${selectedVessel.name}` : '穀物輸入管理システム'}
           </Typography>
           
           {user && (
@@ -66,6 +82,27 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
       {/* メインコンテンツ */}
       <Box sx={{ flex: 1, p: 3, backgroundColor: '#f5f5f5' }}>
+        {selectedVessel && (
+          <Paper sx={{ mb: 3, p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h2" sx={{ mr: 2 }}>
+                {selectedVessel.icon}
+              </Typography>
+              <Box>
+                <Typography variant="h5">
+                  {selectedVessel.name} ({selectedVessel.callSign})
+                </Typography>
+                <Typography variant="body1" color="text.secondary">
+                  {selectedVessel.cargo} - {selectedVessel.cargoAmount} | {selectedVessel.origin} → {selectedVessel.destination}
+                </Typography>
+                <Typography variant="body2" color="primary">
+                  ステータス: {selectedVessel.status} | ETA: {selectedVessel.eta}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        )}
+        
         <Typography variant="h4" gutterBottom>
           ダッシュボード
         </Typography>

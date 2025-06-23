@@ -38,11 +38,13 @@ interface ChannelListPopupProps {
   open: boolean;
   onClose: () => void;
   channels: Channel[];
+  initialChannelId?: string | null;
 }
 
 const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
   open,
   onClose,
+  initialChannelId,
 }) => {
   const { refreshChannels, state } = useApp();
   const [viewState, setViewState] = React.useState<ViewState>('channelList');
@@ -113,8 +115,15 @@ const ChannelListPopup: React.FC<ChannelListPopupProps> = ({
     if (!open) {
       setViewState('channelList');
       setSelectedChannel(null);
+    } else if (open && initialChannelId && state.channelsByTeam) {
+      // 初期チャンネルIDが指定されている場合、そのチャンネルを開く
+      const allChannels = Object.values(state.channelsByTeam).flat();
+      const initialChannel = allChannels.find(ch => ch.id === initialChannelId);
+      if (initialChannel) {
+        handleChannelListSelect(initialChannel);
+      }
     }
-  }, [open]);
+  }, [open, initialChannelId, state.channelsByTeam]);
 
   // チャンネルリストの自動更新（30秒間隔）
   React.useEffect(() => {
