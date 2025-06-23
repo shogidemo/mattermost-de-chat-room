@@ -20,3 +20,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+# Test artifacts
+mattermost-chat-client/test-scripts/
+mattermost-chat-client/screenshots/
+mattermost-chat-client/manual-test.html
+test-results-summary.md
+
