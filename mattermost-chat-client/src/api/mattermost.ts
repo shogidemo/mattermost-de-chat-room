@@ -198,6 +198,31 @@ class MattermostClient {
     return response.data;
   }
 
+  // ユーザー検索（メンション用）
+  async searchUsers(term: string, teamId?: string): Promise<User[]> {
+    try {
+      console.log('🔍 ユーザー検索API呼び出し:', { term, teamId });
+      
+      // 検索パラメータ
+      const searchParams = {
+        term: term,
+        team_id: teamId,
+        limit: 20
+      };
+      
+      const response = await this.axiosInstance.post<{users: User[]}>('/users/search', searchParams);
+      console.log('✅ ユーザー検索成功:', { 
+        count: response.data.users.length,
+        users: response.data.users.map(u => ({ username: u.username, nickname: u.nickname }))
+      });
+      
+      return response.data.users;
+    } catch (error) {
+      console.error('❌ ユーザー検索エラー:', error);
+      return [];
+    }
+  }
+
   // チーム関連メソッド
   async getTeamsForUser(userId: string): Promise<Team[]> {
     const response = await this.axiosInstance.get<Team[]>(`/users/${userId}/teams`);
@@ -229,6 +254,36 @@ class MattermostClient {
         const teamChannels = allChannelsResponse.data.filter(ch => ch.team_id === teamId);
         console.log('✅ フォールバック成功:', { 
           totalChannels: allChannelsResponse.data.length,
+          teamChannels: teamChannels.length 
+        });
+        return teamChannels;
+      } catch (fallbackError) {
+        console.error('❌ フォールバックも失敗:', fallbackError);
+        throw error; // 元のエラーを投げる
+      }
+    }
+  }
+
+  // ユーザーが参加しているチャンネルのみを取得
+  async getMyChannelsForTeam(userId: string, teamId: string): Promise<Channel[]> {
+    try {
+      console.log('📡 参加チャンネル取得API呼び出し:', { userId, teamId, endpoint: `/users/${userId}/teams/${teamId}/channels` });
+      const response = await this.axiosInstance.get<Channel[]>(`/users/${userId}/teams/${teamId}/channels`);
+      console.log('✅ 参加チャンネル取得API成功:', { 
+        count: response.data.length,
+        channels: response.data.map(ch => ({ name: ch.display_name || ch.name, type: ch.type }))
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ 参加チャンネル取得API失敗:', error);
+      
+      // フォールバック: ユーザーの全チャンネルから該当チームのものをフィルター
+      try {
+        console.log('🔄 フォールバック: ユーザーの全チャンネル取得を試行');
+        const allUserChannelsResponse = await this.axiosInstance.get<Channel[]>(`/users/${userId}/channels`);
+        const teamChannels = allUserChannelsResponse.data.filter(ch => ch.team_id === teamId);
+        console.log('✅ フォールバック成功:', { 
+          totalChannels: allUserChannelsResponse.data.length,
           teamChannels: teamChannels.length 
         });
         return teamChannels;
