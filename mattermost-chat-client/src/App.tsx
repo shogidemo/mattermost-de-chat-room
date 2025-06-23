@@ -5,11 +5,11 @@ import {
   createTheme,
 } from '@mui/material';
 import { AppProvider, useApp } from './contexts/AppContext';
-import LoginForm from './components/LoginForm';
-import MainScreen from './components/MainScreen';
-import ChatBubble from './components/ChatBubble';
-import ChannelListPopup from './components/ChannelListPopup';
-import VesselSelectionScreen from './components/VesselSelectionScreen';
+import LoginForm from './components/screens/LoginForm';
+import MainScreen from './components/screens/MainScreen';
+import ChatBubble from './components/ui/common/ChatBubble';
+import ChannelSelector from './components/ui/channels/ChannelSelector';
+import VesselSelectionScreen from './components/screens/VesselSelectionScreen';
 
 // Material-UIテーマ設定
 const theme = createTheme({
@@ -317,7 +317,7 @@ const AppContent: React.FC = () => {
         unreadCount={totalUnreadCount}
         onClick={handleChatBubbleClick}
       />
-      <ChannelListPopup
+      <ChannelSelector
         open={showChannelPopup}
         onClose={() => setShowChannelPopup(false)}
         channels={mergedChannels}

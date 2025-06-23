@@ -11,6 +11,8 @@ export interface User {
   update_at: number;
   delete_at: number;
   roles?: string;
+  auth_service?: string;
+  timezone?: Record<string, any>;
 }
 
 // チーム情報を表す型
@@ -28,6 +30,7 @@ export interface Team {
   allowed_domains?: string;
   invite_id?: string;
   allow_open_invite?: boolean;
+  scheme_id?: string | null;
 }
 
 // チャンネル情報を表す型
@@ -46,6 +49,7 @@ export interface Channel {
   total_msg_count: number;
   extra_update_at: number;
   creator_id?: string;
+  scheme_id?: string | null;
 }
 
 // 最新メッセージプレビュー付きチャンネル情報
@@ -78,6 +82,8 @@ export interface Post {
   hashtags?: string;
   pending_post_id?: string;
   reply_count?: number;
+  last_reply_at?: number;
+  participants?: string[];
   metadata?: PostMetadata;
 }
 
