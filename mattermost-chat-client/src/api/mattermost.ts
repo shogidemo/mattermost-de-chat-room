@@ -836,6 +836,143 @@ class MattermostClient {
   getToken(): string | null {
     return this.token;
   }
+
+  // 船舶専用チーム管理機能
+  /**
+   * チーム名でチームを検索
+   */
+  async getTeamByName(teamName: string): Promise<Team | null> {
+    try {
+      const response = await this.axiosInstance.get<Team>(`/teams/name/${teamName}`);
+      return response.data;
+    } catch (error: any) {
+      if (error.status_code === 404) {
+        return null; // チームが存在しない
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 船舶専用チームを作成
+   */
+  async createVesselTeam(teamName: string, displayName: string, description?: string): Promise<Team> {
+    const teamData = {
+      name: teamName,
+      display_name: displayName,
+      type: 'O' as const, // オープンチーム
+      description: description || `${displayName}の船舶運航管理チーム`,
+    };
+
+    console.log('🚢 船舶チーム作成:', teamData);
+    const response = await this.axiosInstance.post<Team>('/teams', teamData);
+    return response.data;
+  }
+
+  /**
+   * 船舶チームを取得または作成
+   */
+  async getOrCreateVesselTeam(teamName: string, displayName: string): Promise<Team> {
+    try {
+      // まず既存のチームを検索
+      const existingTeam = await this.getTeamByName(teamName);
+      if (existingTeam) {
+        console.log('✅ 既存の船舶チーム発見:', existingTeam.display_name);
+        return existingTeam;
+      }
+
+      // チームが存在しない場合は作成
+      console.log('🏗️ 船舶チーム作成開始:', { teamName, displayName });
+      const newTeam = await this.createVesselTeam(teamName, displayName);
+      console.log('✅ 船舶チーム作成完了:', newTeam.display_name);
+      return newTeam;
+    } catch (error) {
+      console.error('❌ 船舶チーム取得/作成エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ユーザーを船舶チームに追加
+   */
+  async addUserToVesselTeam(teamId: string, userId: string): Promise<void> {
+    try {
+      await this.axiosInstance.post(`/teams/${teamId}/members`, {
+        team_id: teamId,
+        user_id: userId,
+      });
+      console.log('✅ ユーザーを船舶チームに追加:', { teamId, userId });
+    } catch (error: any) {
+      // 既にメンバーの場合は409エラーになるが、それは正常
+      if (error.status_code === 409) {
+        console.log('ℹ️ ユーザーは既に船舶チームのメンバー:', { teamId, userId });
+        return;
+      }
+      console.error('❌ 船舶チームメンバー追加エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 船舶チーム用のデフォルトチャンネルを作成
+   */
+  async createDefaultVesselChannels(teamId: string, vesselName: string): Promise<Channel[]> {
+    const defaultChannels = [
+      {
+        name: 'general',
+        display_name: '一般',
+        purpose: `${vesselName}の一般的な連絡事項`,
+        header: `${vesselName}チームの一般チャンネル`,
+        type: 'O' as const,
+      },
+      {
+        name: 'operations',
+        display_name: '運航管理',
+        purpose: `${vesselName}の運航状況・管理情報`,
+        header: `${vesselName}の運航管理専用チャンネル`,
+        type: 'O' as const,
+      },
+      {
+        name: 'maintenance',
+        display_name: 'メンテナンス',
+        purpose: `${vesselName}のメンテナンス・保守情報`,
+        header: `${vesselName}のメンテナンス情報専用チャンネル`,
+        type: 'O' as const,
+      },
+    ];
+
+    const createdChannels: Channel[] = [];
+
+    for (const channelTemplate of defaultChannels) {
+      try {
+        const channelData: CreateChannelRequest = {
+          ...channelTemplate,
+          team_id: teamId,
+        };
+
+        const channel = await this.createChannel(channelData);
+        createdChannels.push(channel);
+        console.log(`✅ デフォルトチャンネル作成: ${channel.display_name}`);
+      } catch (error: any) {
+        if (error.status_code === 400 && error.message?.includes('already exists')) {
+          console.log(`ℹ️ チャンネル "${channelTemplate.display_name}" は既に存在`);
+          // 既存チャンネルを取得してリストに追加
+          try {
+            const existingChannel = await this.axiosInstance.get<Channel>(
+              `/teams/${teamId}/channels/name/${channelTemplate.name}`
+            );
+            createdChannels.push(existingChannel.data);
+          } catch (getError) {
+            console.warn(`⚠️ 既存チャンネル取得失敗: ${channelTemplate.name}`);
+          }
+        } else {
+          console.error(`❌ チャンネル作成エラー (${channelTemplate.name}):`, error);
+        }
+      }
+    }
+
+    return createdChannels;
+  }
 }
 
 export default MattermostClient;

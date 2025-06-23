@@ -10,6 +10,7 @@ import MainScreen from './components/screens/MainScreen';
 import ChatBubble from './components/ui/common/ChatBubble';
 import ChannelSelector from './components/ui/channels/ChannelSelector';
 import VesselSelectionScreen from './components/screens/VesselSelectionScreen';
+import { CircularProgress, Backdrop } from '@mui/material';
 
 // Material-UIテーマ設定
 const theme = createTheme({
@@ -132,7 +133,7 @@ const DEVELOPMENT_MODE = false; // import.meta.env.DEV;
 
 // アプリケーションコンテンツ（認証状態により切り替え）
 const AppContent: React.FC = () => {
-  const { state } = useApp();
+  const { state, selectVesselTeam } = useApp();
   const { user, channels: realChannels, currentTeam } = state;
   const [currentScreen, setCurrentScreen] = React.useState<ScreenState>(DEVELOPMENT_MODE ? 'vessel-selection' : 'login');
   const [selectedVessel, setSelectedVessel] = React.useState<typeof mockVessels[0] | null>(null);
@@ -284,14 +285,23 @@ const AppContent: React.FC = () => {
     console.log(`[チャンネル選択] チャンネルID: ${channelId} が選択されました`);
   };
 
-  const handleVesselSelect = (vesselId: string) => {
+  const handleVesselSelect = async (vesselId: string) => {
     const vessel = mockVessels.find(v => v.id === vesselId);
     if (vessel) {
       setSelectedVessel(vessel);
-      // 本船に対応するチャンネルIDを設定（本船IDをチャンネルIDとして使用）
-      setSelectedChannelId(vesselId);
-      setCurrentScreen('main');
       console.log(`[本船選択] 本船: ${vessel.name} が選択されました`);
+      
+      try {
+        // 船舶専用チームに切り替え
+        console.log('🚢 船舶専用チームに切り替え開始');
+        await selectVesselTeam(vesselId);
+        console.log('✅ 船舶専用チーム切り替え完了');
+      } catch (error) {
+        console.error('❌ 船舶チーム切り替えエラー:', error);
+        // エラーが発生してもメイン画面には遷移する
+      }
+      
+      setCurrentScreen('main');
     }
   };
 
@@ -320,9 +330,30 @@ const AppContent: React.FC = () => {
       <ChannelSelector
         open={showChannelPopup}
         onClose={() => setShowChannelPopup(false)}
-        channels={mergedChannels}
+        channels={[]} // AppContextから直接取得するため空配列
         initialChannelId={selectedChannelId}
       />
+      
+      {/* 船舶チーム切り替え中のローディング表示 */}
+      <Backdrop
+        open={state.isLoading}
+        sx={{ 
+          color: '#fff', 
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          flexDirection: 'column',
+          gap: 2
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <div style={{ textAlign: 'center' }}>
+          <div>船舶チーム準備中...</div>
+          {selectedVessel && (
+            <div style={{ fontSize: '0.9em', opacity: 0.8 }}>
+              {selectedVessel.name} ({selectedVessel.callSign})
+            </div>
+          )}
+        </div>
+      </Backdrop>
     </>
   );
 };

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useMemo } from
 import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
 import type { AppState, User, Team, Channel, Post, WebSocketEvent, ChannelWithPreview } from '../types/mattermost';
+import { getTeamNameByVesselId, getTeamDisplayNameByVesselId, getVesselInfo } from '../utils/vesselTeamMapping';
 
 // ローカルストレージからメッセージを復元
 const restorePostsFromStorage = (): Record<string, Post[]> => {
@@ -259,6 +260,9 @@ interface AppContextType {
   getUnreadCount: (channelId: string) => number;
   markChannelAsRead: (channelId: string) => void;
   filterChannels: (channels: ChannelWithPreview[], filter: string) => ChannelWithPreview[];
+  // 船舶チーム管理機能
+  selectVesselTeam: (vesselId: string) => Promise<Team>;
+  getOrCreateVesselTeam: (vesselId: string) => Promise<Team>;
 }
 
 // コンテキストの作成
@@ -1187,6 +1191,73 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     });
   };
 
+  // 船舶チーム管理機能
+  const getOrCreateVesselTeam = async (vesselId: string): Promise<Team> => {
+    console.log('🚢 船舶チーム取得/作成開始:', { vesselId });
+    
+    if (!state.user) {
+      throw new Error('ユーザーログインが必要です');
+    }
+
+    const teamName = getTeamNameByVesselId(vesselId);
+    const teamDisplayName = getTeamDisplayNameByVesselId(vesselId);
+    const vesselInfo = getVesselInfo(vesselId);
+
+    if (!teamName || !teamDisplayName || !vesselInfo) {
+      throw new Error(`船舶ID ${vesselId} の情報が見つかりません`);
+    }
+
+    try {
+      // チームを取得または作成
+      const team = await client.getOrCreateVesselTeam(teamName, teamDisplayName);
+      console.log('✅ 船舶チーム取得/作成完了:', team.display_name);
+
+      // ユーザーをチームに追加
+      await client.addUserToVesselTeam(team.id, state.user.id);
+
+      // デフォルトチャンネルを作成（初回のみ）
+      try {
+        const defaultChannels = await client.createDefaultVesselChannels(team.id, vesselInfo.name);
+        console.log('✅ デフォルトチャンネル確認完了:', defaultChannels.length);
+      } catch (channelError) {
+        console.warn('⚠️ デフォルトチャンネル作成でエラー（継続）:', channelError);
+      }
+
+      return team;
+    } catch (error) {
+      console.error('❌ 船舶チーム取得/作成エラー:', error);
+      throw error;
+    }
+  };
+
+  const selectVesselTeam = async (vesselId: string): Promise<Team> => {
+    console.log('🚢 船舶専用チーム選択開始:', { vesselId });
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      // 船舶チームを取得または作成
+      const team = await getOrCreateVesselTeam(vesselId);
+      
+      // チームを選択（既存のselectTeam関数を利用）
+      await selectTeam(team);
+      
+      console.log('✅ 船舶チーム選択完了:', { 
+        vesselId, 
+        teamName: team.display_name, 
+        channelCount: state.channels.length 
+      });
+
+      return team;
+    } catch (error) {
+      console.error('❌ 船舶チーム選択エラー:', error);
+      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : '船舶チーム選択に失敗しました' });
+      throw error;
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
   // デバッグ用関数（開発環境のみ）
   React.useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1305,6 +1376,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     getUnreadCount,
     markChannelAsRead,
     filterChannels,
+    // 船舶チーム管理機能
+    selectVesselTeam,
+    getOrCreateVesselTeam,
   };
 
   return (
