@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>船舶選択テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .steps {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .steps h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        .steps ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .steps li {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+        .url {
+            background-color: #333;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        .log-section {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .log-section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        pre {
+            background-color: #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .success {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        button {
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>船舶選択機能 手動テストガイド</h1>
+        
+        <div class="info">
+            <p><strong>テスト日時:</strong> <span id="testDate"></span></p>
+            <p><strong>目的:</strong> 船舶選択後の画面遷移が正しく動作することを確認</p>
+        </div>
+
+        <div class="steps">
+            <h2>テスト手順</h2>
+            <ol>
+                <li>
+                    <strong>アプリケーションにアクセス</strong><br>
+                    <span class="url">http://localhost:5173</span>
+                </li>
+                <li>
+                    <strong>開発者ツールを開く</strong><br>
+                    F12キーを押してConsoleタブを開く
+                </li>
+                <li>
+                    <strong>ログイン</strong><br>
+                    ユーザー名: <code>sho1</code><br>
+                    パスワード: <code>sho12345</code>
+                </li>
+                <li>
+                    <strong>船舶選択画面を確認</strong><br>
+                    5つの船舶カードが表示されることを確認
+                </li>
+                <li>
+                    <strong>Pacific Gloryをクリック</strong><br>
+                    最初の船舶カードをクリック
+                </li>
+                <li>
+                    <strong>コンソールログを確認</strong><br>
+                    下記の「期待されるログ」セクションを参照
+                </li>
+                <li>
+                    <strong>画面遷移を確認</strong><br>
+                    ダッシュボード画面（メイン画面）に遷移することを確認
+                </li>
+            </ol>
+        </div>
+
+        <div class="log-section">
+            <h2>期待されるコンソールログ</h2>
+            <pre>
+<span class="success">[VesselSelectionScreen] 船舶カードクリック: Pacific Glory (ID: vessel-1)</span>
+<span class="success">[App.handleVesselSelect] 開始 - vesselId: vessel-1</span>
+<span class="success">[App.handleVesselSelect] 船舶を見つけました: Pacific Glory</span>
+<span class="success">==================================================</span>
+<span class="success">🚢 [本船選択] 本船: Pacific Glory (ID: vessel-1) が選択されました</span>
+<span class="success">==================================================</span>
+<span class="success">🔄 船舶専用チームに切り替え開始</span>
+<span class="success">✅ 船舶専用チーム切り替え完了</span>
+<span class="success">[App.handleVesselSelect] 画面遷移実行: vessel-selection → main</span>
+<span class="success">[App.handleVesselSelect] setCurrentScreen(main)呼び出し完了</span>
+<span class="success">[App] 画面状態が変更されました: main</span>
+            </pre>
+        </div>
+
+        <div class="log-section">
+            <h2>エラー時のログパターン</h2>
+            <pre>
+<span class="error">❌ 船舶チーム切り替えエラー: [エラー内容]</span>
+<span class="error">[App.handleVesselSelect] エラー発生</span>
+            </pre>
+            <p>エラーが発生した場合、アラートダイアログが表示されます。</p>
+        </div>
+
+        <button onclick="window.open('http://localhost:5173', '_blank')">
+            アプリケーションを開く
+        </button>
+
+        <div class="log-section">
+            <h2>デバッグコマンド</h2>
+            <p>コンソールで以下のコマンドを実行して状態を確認できます：</p>
+            <pre>
+// 現在の状態を表示
+window.mattermostDebug.showCurrentState()
+
+// 全チーム一覧を表示
+await window.mattermostDebug.getAllTeams()
+
+// 手動で船舶チームに切り替え
+await window.mattermostDebug.testVesselTeam('vessel-1')
+            </pre>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('testDate').textContent = new Date().toLocaleString('ja-JP');
+    </script>
+</body>
+</html>
