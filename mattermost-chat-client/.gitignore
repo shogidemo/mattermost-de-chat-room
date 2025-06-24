@@ -26,7 +26,12 @@ dist-ssr
 # Test results and reports
 test-results/
 playwright-report/
+
+# Environment files
 .env
+.env.test
+.env.local
+.env.production
 
 # Build and development artifacts
 .vite/

@@ -5,9 +5,9 @@ services:
     platform: linux/arm64
     restart: unless-stopped
     environment:
-      POSTGRES_USER: mmuser
-      POSTGRES_PASSWORD: mmuser_password
-      POSTGRES_DB: mattermost
+      POSTGRES_USER: ${DB_USER:-mmuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mmuser_password}
+      POSTGRES_DB: ${DB_NAME:-mattermost}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -24,7 +24,7 @@ services:
     environment:
       # データベース設定
       MM_SQLSETTINGS_DRIVERNAME: postgres
-      MM_SQLSETTINGS_DATASOURCE: postgres://mmuser:mmuser_password@postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+      MM_SQLSETTINGS_DATASOURCE: postgres://${DB_USER:-mmuser}:${DB_PASSWORD:-mmuser_password}@postgres:5432/${DB_NAME:-mattermost}?sslmode=disable&connect_timeout=10
       
       # ファイルストレージ設定
       MM_FILESETTINGS_DRIVERNAME: local

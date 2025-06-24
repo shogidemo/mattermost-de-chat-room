@@ -26,3 +26,9 @@ mattermost-chat-client/screenshots/
 mattermost-chat-client/manual-test.html
 test-results-summary.md
 
+# Credentials and sensitive files
+mattermost-chat-client/CREDENTIALS.md
+.env
+.env.local
+.env.production
+
