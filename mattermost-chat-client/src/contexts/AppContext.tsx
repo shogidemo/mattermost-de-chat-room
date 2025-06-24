@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import MattermostClient from '../api/mattermost';
 import type { AppState, User, Team, Channel, Post, WebSocketEvent, ChannelWithPreview } from '../types/mattermost';
 import { getTeamNameByVesselId, getTeamDisplayNameByVesselId, getVesselInfo, getAllVesselInfos } from '../utils/vesselTeamMapping';
+import { setupGlobalDebugHelpers, recordTeamSwitch } from '../utils/debugHelpers';
 
 // ローカルストレージからメッセージを復元
 const restorePostsFromStorage = (): Record<string, Post[]> => {
@@ -280,10 +281,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // グローバル状態へのアクセスを提供（ポーリング用）
   React.useEffect(() => {
     (window as any).__mattermostAppState = state;
+    (window as any).__mattermostClient = client;
     return () => {
       delete (window as any).__mattermostAppState;
+      delete (window as any).__mattermostClient;
     };
-  }, [state]);
+  }, [state, client]);
+  
+  // デバッグヘルパーを初期化
+  React.useEffect(() => {
+    setupGlobalDebugHelpers();
+  }, []);
 
   // セッション復元の試行（1回のみ実行）
   useEffect(() => {
@@ -816,6 +824,51 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           const vesselInfo = getAllVesselInfos().find(info => info.teamName === team.name);
           if (vesselInfo) {
             console.log('🚢 船舶チーム検出:', vesselInfo.name);
+            
+            // まずチームの全チャンネルを取得してみる
+            try {
+              console.log('🔍 チームの全チャンネルを確認中...');
+              const allTeamChannels = await client.getChannelsForTeam(team.id);
+              console.log('📋 チームの全チャンネル数:', allTeamChannels.length);
+              
+              if (allTeamChannels.length > 0) {
+                // town-squareチャンネルを探す
+                const townSquare = allTeamChannels.find(ch => ch.name === 'town-square');
+                if (townSquare) {
+                  console.log('🏠 town-squareチャンネル発見、参加を試行');
+                  try {
+                    await client.joinChannel(townSquare.id, state.user.id);
+                    console.log('✅ town-squareチャンネルへの参加成功');
+                  } catch (joinError) {
+                    console.warn('⚠️ town-squareチャンネルへの参加失敗:', joinError);
+                  }
+                }
+                
+                // オープンチャンネルをいくつか参加
+                const openChannels = allTeamChannels.filter(ch => ch.type === 'O').slice(0, 3);
+                for (const channel of openChannels) {
+                  try {
+                    await client.joinChannel(channel.id, state.user.id);
+                    console.log('✅ チャンネル参加:', channel.display_name || channel.name);
+                  } catch (joinError) {
+                    // 既に参加している場合はエラーになるが継続
+                  }
+                }
+                
+                // チャンネルリストを再取得
+                const updatedChannels = await client.getMyChannelsForTeam(state.user.id, team.id);
+                if (updatedChannels.length > 0) {
+                  console.log('✅ チャンネル参加後のチャンネル数:', updatedChannels.length);
+                  dispatch({ type: 'SET_CHANNELS', payload: updatedChannels });
+                  await selectChannel(updatedChannels[0]);
+                  return; // 成功したのでデフォルトチャンネル作成はスキップ
+                }
+              }
+            } catch (teamChannelsError) {
+              console.warn('⚠️ チームチャンネル取得エラー:', teamChannelsError);
+            }
+            
+            // デフォルトチャンネルの作成を試行
             const createdChannels = await client.createDefaultVesselChannels(team.id, vesselInfo.name);
             if (createdChannels.length > 0) {
               console.log('✅ デフォルトチャンネル作成成功');
@@ -838,10 +891,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('❌ チーム選択エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : 'チーム情報の取得に失敗しました';
       dispatch({
         type: 'SET_ERROR',
-        payload: 'チーム情報の取得に失敗しました',
+        payload: errorMessage,
       });
+      recordTeamSwitch('selectTeam', team.display_name || team.name, false, errorMessage);
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -1242,7 +1297,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     try {
       // チームを取得または作成
       console.log('🔄 Mattermostチーム取得/作成API呼び出し:', { teamName, teamDisplayName });
-      const team = await client.getOrCreateVesselTeam(teamName, teamDisplayName);
+      const team = await client.getOrCreateVesselTeam(teamName, teamDisplayName, state.user.id);
       console.log('✅ 船舶チーム取得/作成完了:', {
         teamId: team.id,
         teamDisplayName: team.display_name,
@@ -1382,6 +1437,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       });
       console.log('='.repeat(60));
 
+      recordTeamSwitch('selectVesselTeam', team.display_name, true);
       return team;
     } catch (error) {
       console.error('❌ 船舶チーム選択エラー:', error);
@@ -1390,7 +1446,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : '船舶チーム選択に失敗しました' });
+      const errorMessage = error instanceof Error ? error.message : '船舶チーム選択に失敗しました';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      recordTeamSwitch('selectVesselTeam', `vessel-${vesselId}`, false, errorMessage);
       throw error;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -1560,6 +1618,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     selectVesselTeam,
     getOrCreateVesselTeam,
   };
+  
+  // デバッグ用に関数をグローバルに公開
+  React.useEffect(() => {
+    (window as any).__selectVesselTeam = selectVesselTeam;
+    (window as any).__refreshChannels = refreshChannels;
+    return () => {
+      delete (window as any).__selectVesselTeam;
+      delete (window as any).__refreshChannels;
+    };
+  }, [selectVesselTeam, refreshChannels]);
 
   return (
     <AppContext.Provider value={contextValue}>

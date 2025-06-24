@@ -277,19 +277,46 @@ class MattermostClient {
     } catch (error) {
       console.error('❌ 参加チャンネル取得API失敗:', error);
       
-      // フォールバック: ユーザーの全チャンネルから該当チームのものをフィルター
+      // フォールバック1: チーム全体のチャンネルを取得してみる
       try {
-        console.log('🔄 フォールバック: ユーザーの全チャンネル取得を試行');
-        const allUserChannelsResponse = await this.axiosInstance.get<Channel[]>(`/users/${userId}/channels`);
-        const teamChannels = allUserChannelsResponse.data.filter(ch => ch.team_id === teamId);
-        console.log('✅ フォールバック成功:', { 
-          totalChannels: allUserChannelsResponse.data.length,
-          teamChannels: teamChannels.length 
+        console.log('🔄 フォールバック1: チーム全体のチャンネル取得を試行');
+        const teamChannelsResponse = await this.axiosInstance.get<Channel[]>(`/teams/${teamId}/channels`);
+        console.log('📋 チーム全体のチャンネル数:', teamChannelsResponse.data.length);
+        
+        // ユーザーが参加しているチャンネルのみフィルター（可能な場合）
+        const accessibleChannels = teamChannelsResponse.data.filter(ch => {
+          // オープンチャンネルは全員アクセス可能
+          if (ch.type === 'O') return true;
+          // プライベートチャンネルは判定できないので除外
+          return false;
         });
-        return teamChannels;
-      } catch (fallbackError) {
-        console.error('❌ フォールバックも失敗:', fallbackError);
-        throw error; // 元のエラーを投げる
+        
+        console.log('✅ アクセス可能なチャンネル:', { 
+          total: teamChannelsResponse.data.length,
+          accessible: accessibleChannels.length 
+        });
+        return accessibleChannels;
+        
+      } catch (teamChannelsError) {
+        console.error('❌ チーム全体のチャンネル取得も失敗:', teamChannelsError);
+        
+        // フォールバック2: ユーザーの全チャンネルから該当チームのものをフィルター
+        try {
+          console.log('🔄 フォールバック2: ユーザーの全チャンネル取得を試行');
+          const allUserChannelsResponse = await this.axiosInstance.get<Channel[]>(`/users/${userId}/channels`);
+          const teamChannels = allUserChannelsResponse.data.filter(ch => ch.team_id === teamId);
+          console.log('✅ フォールバック2成功:', { 
+            totalChannels: allUserChannelsResponse.data.length,
+            teamChannels: teamChannels.length 
+          });
+          return teamChannels;
+        } catch (fallbackError) {
+          console.error('❌ フォールバック2も失敗:', fallbackError);
+          
+          // 最終手段: 空の配列を返す（エラーを投げない）
+          console.warn('⚠️ チャンネル取得に失敗しましたが、処理を継続します');
+          return [];
+        }
       }
     }
   }
@@ -852,6 +879,10 @@ class MattermostClient {
         console.log(`⚠️ [API] チームが存在しません: ${teamName}`);
         return null; // チームが存在しない
       }
+      if (error.status_code === 403) {
+        console.log(`🔒 [API] チームアクセス権限なし: ${teamName}`);
+        return null; // アクセス権限がない
+      }
       console.error(`❌ [API] チーム検索エラー:`, error);
       throw error;
     }
@@ -886,9 +917,9 @@ class MattermostClient {
   /**
    * 船舶チームを取得または作成
    */
-  async getOrCreateVesselTeam(teamName: string, displayName: string): Promise<Team> {
+  async getOrCreateVesselTeam(teamName: string, displayName: string, currentUserId?: string): Promise<Team> {
     console.log('🔄 MattermostAPI: 船舶チーム取得/作成開始');
-    console.log('📋 入力パラメータ:', { teamName, displayName });
+    console.log('📋 入力パラメータ:', { teamName, displayName, currentUserId });
     
     try {
       // まず既存のチームを検索
@@ -924,15 +955,44 @@ class MattermostClient {
         id: error.id
       });
       
-      // エラーメッセージを改善
+      // 権限エラーの場合の改善されたハンドリング
       if (error.status_code === 403 || error.id === 'api.team.create_team.permissions.app_error') {
+        console.warn('⚠️ チーム作成権限なし - ユーザーの既存チームから検索を試行');
+        
+        // ユーザーの既存チームから船舶チームを探す
+        if (currentUserId) {
+          try {
+            const userTeams = await this.getTeamsForUser(currentUserId);
+            console.log('📋 ユーザーの既存チーム数:', userTeams.length);
+            
+            // 正確なチーム名で検索
+            const exactMatch = userTeams.find(team => team.name === teamName);
+            if (exactMatch) {
+              console.log('✅ 既存チームから正確な一致を発見:', exactMatch.display_name);
+              return exactMatch;
+            }
+            
+            // 表示名で部分一致検索
+            const partialMatch = userTeams.find(team => 
+              team.display_name.toLowerCase().includes(displayName.toLowerCase().replace(' チーム', '')) ||
+              team.name.includes(teamName.replace('-team', ''))
+            );
+            if (partialMatch) {
+              console.log('✅ 既存チームから部分一致を発見:', partialMatch.display_name);
+              return partialMatch;
+            }
+          } catch (fallbackError) {
+            console.error('❌ フォールバック検索も失敗:', fallbackError);
+          }
+        }
+        
+        // 改善されたエラーメッセージ
         const improvedError = new Error(
-          `チーム作成権限がありません。\n\n` +
-          `Mattermost管理者に以下を依頼してください：\n` +
-          `1. sho1ユーザーに「Create Public Teams」権限を付与\n` +
-          `2. または、以下のチームを作成：\n` +
-          `   - チーム名: ${teamName}\n` +
-          `   - 表示名: ${displayName}`
+          `船舶チーム「${displayName}」へのアクセスに失敗しました。\n\n` +
+          `以下のいずれかの対応が必要です：\n` +
+          `1. Mattermost管理者に「${teamName}」チームへの招待を依頼\n` +
+          `2. 管理者にチーム作成権限の付与を依頼\n` +
+          `3. 既に別の船舶チームに所属している場合は、そちらを選択`
         );
         throw improvedError;
       }
