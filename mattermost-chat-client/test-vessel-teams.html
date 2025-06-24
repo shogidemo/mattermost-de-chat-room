@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>船舶チーム機能テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #1976d2;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+        }
+        .vessel-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        .vessel-button {
+            background: #4caf50;
+        }
+        .vessel-button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚢 船舶チーム機能テストページ</h1>
+        
+        <div class="status info">
+            <strong>テスト環境:</strong> http://localhost:5174<br>
+            <strong>ユーザー:</strong> sho1<br>
+            <strong>前提条件:</strong> アプリケーションにログイン済み
+        </div>
+
+        <div class="test-section">
+            <h2>1. 事前確認</h2>
+            <p>まず、現在の状態と権限を確認します。</p>
+            <button onclick="checkCurrentState()">現在の状態確認</button>
+            <button onclick="checkAllTeams()">全チーム一覧</button>
+            <button onclick="checkPermissions()">権限確認</button>
+            <div id="pre-check-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. 船舶選択テスト</h2>
+            <p>各船舶を選択して、専用チームへの切り替えをテストします。</p>
+            <div class="vessel-buttons">
+                <button class="vessel-button" onclick="testVessel('vessel-1', 'Pacific Glory')">Pacific Glory</button>
+                <button class="vessel-button" onclick="testVessel('vessel-2', 'Ocean Dream')">Ocean Dream</button>
+                <button class="vessel-button" onclick="testVessel('vessel-3', 'Grain Master')">Grain Master</button>
+                <button class="vessel-button" onclick="testVessel('vessel-4', 'Star Carrier')">Star Carrier</button>
+                <button class="vessel-button" onclick="testVessel('vessel-5', 'Blue Horizon')">Blue Horizon</button>
+            </div>
+            <div id="vessel-test-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. チャンネル確認</h2>
+            <button onclick="refreshChannels()">チャンネルリスト更新</button>
+            <button onclick="checkChannelDetails()">チャンネル詳細確認</button>
+            <div id="channel-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. 診断結果</h2>
+            <div id="diagnosis-results"></div>
+        </div>
+    </div>
+
+    <script>
+        // 結果表示用のヘルパー関数
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `status ${type}`;
+            resultDiv.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            element.appendChild(resultDiv);
+        }
+
+        // コンソールログも同時に出力
+        function logAndShow(elementId, message, type = 'info') {
+            console.log(message);
+            showResult(elementId, message, type);
+        }
+
+        // 1. 現在の状態確認
+        function checkCurrentState() {
+            logAndShow('pre-check-results', 'ブラウザコンソールで window.mattermostDebug.showCurrentState() を実行してください', 'info');
+        }
+
+        // 2. 全チーム一覧
+        async function checkAllTeams() {
+            logAndShow('pre-check-results', 'ブラウザコンソールで await window.mattermostDebug.getAllTeams() を実行してください', 'info');
+        }
+
+        // 3. 権限確認
+        function checkPermissions() {
+            const script = `
+// 権限確認
+const user = window.__mattermostAppState?.user;
+console.log('ユーザー:', user?.username);
+console.log('ロール:', user?.roles);
+`;
+            logAndShow('pre-check-results', 'ブラウザコンソールで以下を実行:<pre>' + script + '</pre>', 'info');
+        }
+
+        // 4. 船舶テスト
+        async function testVessel(vesselId, vesselName) {
+            logAndShow('vessel-test-results', `${vesselName} (${vesselId}) のテスト開始...`, 'info');
+            
+            const testScript = `
+// ${vesselName}チームテスト
+window.mattermostDebug.testVesselTeam('${vesselId}')
+  .then(result => {
+    console.log('✅ 成功:', result.display_name);
+    setTimeout(() => {
+      window.mattermostDebug.showCurrentState();
+    }, 1000);
+  })
+  .catch(error => {
+    console.error('❌ エラー:', error.message);
+  });
+`;
+            
+            logAndShow('vessel-test-results', 'ブラウザコンソールで以下を実行:<pre>' + testScript + '</pre>', 'warning');
+        }
+
+        // 5. チャンネル更新
+        function refreshChannels() {
+            logAndShow('channel-results', 'ブラウザコンソールで window.mattermostDebug.refreshChannels() を実行してください', 'info');
+        }
+
+        // 6. チャンネル詳細
+        function checkChannelDetails() {
+            const script = `
+// チャンネル詳細確認
+const state = window.__mattermostAppState;
+console.log('現在のチーム:', state?.currentTeam?.display_name);
+console.log('チャンネル数:', state?.channels?.length);
+state?.channels?.forEach(ch => {
+  console.log('- ' + (ch.display_name || ch.name));
+});
+`;
+            logAndShow('channel-results', 'ブラウザコンソールで以下を実行:<pre>' + script + '</pre>', 'info');
+        }
+
+        // ページ読み込み時の案内
+        window.onload = function() {
+            showResult('diagnosis-results', 
+                '⚠️ 重要: このページは http://localhost:5174 のアプリケーションと同じブラウザで開いてください。', 
+                'warning'
+            );
+            showResult('diagnosis-results', 
+                'テストを実行するには、F12キーを押して開発者ツールを開き、Consoleタブで指示されたコマンドを実行してください。', 
+                'info'
+            );
+        };
+    </script>
+</body>
+</html>

@@ -25,6 +25,12 @@ npm install
 # 開発サーバー起動（ブラウザ自動起動なし）
 npm run dev
 
+# Windows環境での開発サーバー起動
+npm run dev:windows
+
+# TypeScript型チェック（コンパイルなし）
+npm run typecheck
+
 # ビルド（TypeScript + Vite）
 npm run build
 
@@ -37,6 +43,15 @@ npm run preview
 
 ### テストコマンド
 ```bash
+# 単体テスト実行（Jest）
+npm run test
+
+# 単体テスト（ウォッチモード）
+npm run test:watch
+
+# テストカバレッジレポート生成
+npm run test:coverage
+
 # E2Eテスト実行
 npm run test:e2e
 
@@ -45,6 +60,9 @@ npm run test:e2e:ui
 
 # ブラウザ表示付きテスト
 npm run test:e2e:headed
+
+# デバッグモードでE2Eテスト
+npm run test:e2e:debug
 
 # 単一テストファイル実行
 npx playwright test tests/e2e/chat.spec.ts
@@ -78,6 +96,7 @@ npm run mcp:headless
 - **WebSocket**: リアルタイム通信
 
 ### テスト・自動化
+- **Jest**: 単体テストフレームワーク
 - **Playwright**: E2Eテストフレームワーク
 - **Playwright MCP**: AIアシスタント連携によるブラウザ自動化
 - **ESLint**: コード品質チェック
@@ -93,6 +112,7 @@ npm run mcp:headless
 1. **認証**: フロント → Mattermost API → トークン取得 → ローカルストレージ保存
 2. **リアルタイム通信**: WebSocket接続 → イベント受信 → React状態更新
 3. **チャンネル判定**: チャンネルID長で実チャンネル/モックチャンネルを自動判別
+4. **船舶チーム機能**: 船舶名/IDベースの動的チャンネル管理
 
 ### 状態管理アーキテクチャ
 - **AppContext**: グローバル状態管理（useReducer + Context API）
@@ -124,6 +144,9 @@ const isRealMattermostChannel = (channelId: string) => channelId.length > 10;
 mattermost-de-chat-room/
 ├── docker-compose.yml                 # Mattermost + PostgreSQL設定
 ├── CLAUDE.md                         # このドキュメント
+├── DEVELOPMENT.md                    # 開発環境ガイド
+├── WEBSOCKET_SETUP.md               # WebSocket設定ガイド
+├── designdoc/                        # 設計ドキュメント
 └── mattermost-chat-client/           # Reactクライアント
     ├── src/
     │   ├── api/
@@ -133,19 +156,27 @@ mattermost-de-chat-room/
     │   ├── contexts/
     │   │   └── AppContext.tsx        # アプリケーション状態管理
     │   ├── components/
-    │   │   ├── LoginForm.tsx         # ログイン画面
-    │   │   ├── ChannelList.tsx       # チャンネル一覧
-    │   │   ├── ChatView.tsx          # チャット画面
-    │   │   ├── MessageList.tsx       # メッセージ一覧
-    │   │   └── MessageInput.tsx      # メッセージ入力
-    │   └── App.tsx                   # メインアプリケーション
-    ├── tests/e2e/                   # E2Eテスト
+    │   │   ├── debug/               # デバッグコンポーネント
+    │   │   ├── screens/             # 画面コンポーネント
+    │   │   │   ├── LoginScreen.tsx  # ログイン画面
+    │   │   │   ├── ChatScreen.tsx   # チャット画面
+    │   │   │   └── VesselSelectionScreen.tsx # 船舶選択画面
+    │   │   └── ui/                  # UIコンポーネント
+    │   │       ├── channels/        # チャンネル関連
+    │   │       ├── chat/           # チャット関連
+    │   │       └── common/         # 共通コンポーネント
+    │   ├── utils/                   # ユーティリティ関数
+    │   └── App.tsx                  # メインアプリケーション
+    ├── test-scripts/               # 自動テストスクリプト
+    ├── CREDENTIALS.md              # 開発用認証情報
+    ├── VESSEL-TEAMS-STATUS.md      # 船舶チーム実装状況
+    ├── tests/e2e/                  # E2Eテスト
     ├── scripts/
-    │   └── start-playwright-mcp.sh   # Playwright MCP起動スクリプト
+    │   └── start-playwright-mcp.sh  # Playwright MCP起動スクリプト
     ├── docs/
-    │   └── PLAYWRIGHT_MCP.md        # Playwright MCP統合ガイド
-    ├── playwright-mcp-config.json   # MCP設定ファイル
-    ├── playwright.config.ts         # Playwrightテスト設定
+    │   └── PLAYWRIGHT_MCP.md       # Playwright MCP統合ガイド
+    ├── playwright-mcp-config.json  # MCP設定ファイル
+    ├── playwright.config.ts        # Playwrightテスト設定
     ├── package.json
     └── vite.config.ts
 ```
@@ -196,6 +227,12 @@ npm run dev
 
 ブラウザで http://localhost:5173 にアクセス
 
+### 6. 開発用認証情報
+
+開発環境では以下の認証情報を使用：
+- **管理者アカウント**: admin / Admin123456!
+- 詳細は `mattermost-chat-client/CREDENTIALS.md` を参照
+
 ## 機能一覧
 
 ### 実装済み機能
@@ -212,6 +249,7 @@ npm run dev
 - ✅ チャンネルタイプ別表示（パブリック、プライベート、DM、グループDM）
 - ✅ **実チャンネルとモックチャンネルの統合表示**
 - ✅ **セッション復元時の自動チャンネル読み込み**
+- ✅ **船舶チーム機能（船舶ごとの専用チャンネル）**
 
 #### メッセージング
 - ✅ メッセージ送信
@@ -351,10 +389,17 @@ docker-compose exec postgres psql -U mmuser -d mattermost
 - **グローバル状態追加**: `src/contexts/AppContext.tsx` のreducerに追加
 
 ### よく変更されるファイル
-- **チャット表示**: `src/components/ChatMiniView.tsx` (実装の中核)
-- **メッセージリスト**: `src/components/MessageList.tsx`
-- **チャンネルリスト**: `src/components/ChannelList.tsx`
-- **ログイン処理**: `src/components/LoginForm.tsx`
+- **画面コンポーネント**: 
+  - `src/components/screens/ChatScreen.tsx` - メインチャット画面
+  - `src/components/screens/VesselSelectionScreen.tsx` - 船舶選択画面
+  - `src/components/screens/LoginScreen.tsx` - ログイン画面
+- **チャット関連**: 
+  - `src/components/ui/chat/ChatView.tsx` - チャット表示の中核
+  - `src/components/ui/chat/MessageList.tsx` - メッセージ一覧
+  - `src/components/ui/chat/MessageInput.tsx` - メッセージ入力
+- **チャンネル関連**: 
+  - `src/components/ui/channels/ChannelList.tsx` - チャンネル一覧
+  - `src/components/ui/channels/ChannelListItem.tsx` - チャンネル項目
 
 ## 設計ドキュメント (designdoc)
 
@@ -378,6 +423,11 @@ docker-compose exec postgres psql -U mmuser -d mattermost
 - **新機能追加時**: まず関連する設計ドキュメントを確認
 - **実装で迷った時**: decisions/フォルダで過去の設計決定を確認
 - **バグ修正時**: architecture/で全体の設計意図を理解してから修正
+
+### 追加ドキュメント
+- **DEVELOPMENT.md**: VSCode開発環境の設定、Windows環境対応
+- **WEBSOCKET_SETUP.md**: WebSocket接続の詳細設定
+- **test-scripts/README.md**: 自動テストスクリプトの使い方
 
 ### パフォーマンス最適化
 
@@ -500,6 +550,19 @@ const send = isRealMattermostChannel(channelId)
 
 
 
+## 船舶チーム機能
+
+### 概要
+船舶ごとに専用のチームとチャンネルを動的に管理する特別な機能。船舶選択画面から船舶を選択すると、その船舶専用のチャンネルにアクセスできます。
+
+### 実装状況
+- 詳細は `mattermost-chat-client/VESSEL-TEAMS-STATUS.md` を参照
+- 船舶チーム管理APIは `/api/vessel-teams` エンドポイントで実装
+
+### 関連ファイル
+- `src/components/screens/VesselSelectionScreen.tsx` - 船舶選択画面
+- `test-scripts/vessel/` - 船舶チーム関連のテストスクリプト
+
 ## 関連リンク
 
 - [Mattermost API Documentation](https://api.mattermost.com/)
@@ -507,11 +570,51 @@ const send = isRealMattermostChannel(channelId)
 - [React Documentation](https://react.dev/)
 - [TypeScript Documentation](https://www.typescriptlang.org/)
 
-## APIリファレンス
-
-- [Mattermost API リファレンス](./docs/mattermost-api-reference.md) - Mattermost APIの詳細な使い方とサンプルコード
-
 ## 開発ワークフロー
+
+### 重要な教訓：実動作確認の必須化（2025年6月24日追加）
+
+#### 問題事例
+船舶チーム切り替え機能の修正時に、コードを修正してコミットしたが実際の動作確認を行わず、結果として問題が解決していない状態でPRに含まれてしまった。
+
+#### 必須の開発フロー
+```bash
+1. コード修正
+2. npm run dev でローカル環境起動
+3. ブラウザで実際に機能を操作して動作確認
+4. ブラウザコンソールでエラーがないことを確認
+5. 期待する動作になっていることを確認
+6. テストコマンド実行（npm run typecheck, npm run lint）
+7. 上記すべて完了後にコミット
+```
+
+#### エラーハンドリングの原則
+```javascript
+// ❌ 悪い例：エラーを隠蔽
+try {
+  await someFunction();
+} catch (error) {
+  console.error('エラー:', error);
+  // 処理を続行（問題が見えなくなる）
+}
+
+// ✅ 良い例：エラーを可視化
+try {
+  await someFunction();
+} catch (error) {
+  console.error('エラー:', error);
+  alert(`処理に失敗しました: ${error.message}`);
+  throw error; // 必要に応じて再スロー
+}
+```
+
+#### コミット前チェックリスト
+- [ ] `npm run dev` で動作確認した
+- [ ] ブラウザコンソールにエラーがない
+- [ ] 期待する画面・動作になっている
+- [ ] エラー時の挙動も確認した
+- [ ] `npm run typecheck` が通る
+- [ ] `npm run lint` が通る（または既知の問題のみ）
 
 ### 作業完了後のプルリクエスト作成
 
@@ -543,8 +646,32 @@ Claude Codeは機能実装や修正作業を完了した後、必ず以下の手
 
 この手順により、コードの品質を保ち、変更内容の透明性を確保します。
 
+### 作業実行の原則（2025年6月24日追加）
+
+#### 重要：Claude Codeは可能な限り自力で作業を実行する
+
+**実行する作業の例：**
+- コード修正・実装
+- テストコマンドの実行（npm test, npm run lint等）
+- セットアップスクリプトの実行
+- デバッグスクリプトの実行
+- ドキュメント作成・更新
+- git操作（コミット、プッシュ、PR作成）
+
+**ユーザーに依頼する必要がある作業：**
+- 管理者権限が必要な作業（例：Mattermost管理画面での設定）
+- ローカル環境固有の認証情報設定（例：パスワード入力）
+- 手動でのブラウザ操作が必要な確認（例：UI動作確認）
+- 外部サービスへのアクセス権限設定
+
+**作業を依頼する際の原則：**
+1. まず自力で実行を試みる
+2. 実行できない場合は、理由を明確に説明する
+3. 代替手段があれば提案する
+4. どうしても無理な場合のみ、具体的な手順と共に依頼する
+
 ---
 
 **作成日**: 2025-06-17  
-**最終更新**: 2025-06-23  
+**最終更新**: 2025-06-24  
 **作成者**: Claude Code

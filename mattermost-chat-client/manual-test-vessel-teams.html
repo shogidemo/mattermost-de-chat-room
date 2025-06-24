@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>船舶チーム手動テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #1976d2;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+        }
+        .screenshot {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e8f4f8;
+            border: 1px solid #0891b2;
+            border-radius: 4px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .pass { border-color: #10b981; background: #ecfdf5; }
+        .fail { border-color: #ef4444; background: #fef2f2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚢 船舶チーム機能 手動テストガイド</h1>
+        
+        <div class="status info">
+            <strong>前提条件:</strong><br>
+            1. 開発サーバーが起動している (http://localhost:5173)<br>
+            2. sho1/sho12345 でログイン可能<br>
+            3. 開発者ツール（F12）のコンソールタブを開いている
+        </div>
+
+        <div class="test-section">
+            <h2>テスト手順</h2>
+            
+            <h3>1. 初期状態の確認</h3>
+            <ol>
+                <li>http://localhost:5173 にアクセス</li>
+                <li>sho1/sho12345 でログイン</li>
+                <li>船舶一覧画面が表示されることを確認</li>
+            </ol>
+            
+            <div class="screenshot">
+                <strong>📸 スクリーンショット1:</strong> ログイン後の船舶一覧画面
+            </div>
+
+            <h3>2. Pacific Glory のテスト</h3>
+            <ol>
+                <li>Pacific Glory カードをクリック</li>
+                <li>コンソールに以下のログが出力されることを確認：
+                    <pre>🚢 [本船選択] 本船: Pacific Glory (ID: vessel-1) が選択されました
+🔄 船舶専用チームに切り替え開始</pre>
+                </li>
+                <li>メイン画面が表示されることを確認</li>
+                <li>右下のチャットバブルをクリック</li>
+                <li>チャットパネルのタイトルを確認</li>
+            </ol>
+            
+            <div class="test-result">
+                <strong>期待される結果:</strong><br>
+                ✅ チャットパネルに「Pacific Glory チーム」と表示される<br>
+                ✅ チャンネル数が3以上表示される<br>
+                ❌ 「test-team」と表示される場合は失敗
+            </div>
+            
+            <div class="screenshot">
+                <strong>📸 スクリーンショット2:</strong> Pacific Glory 選択後のチャットパネル
+            </div>
+
+            <h3>3. Ocean Dream のテスト</h3>
+            <p>同様の手順で Ocean Dream をテスト</p>
+            
+            <div class="test-result">
+                <strong>期待される結果:</strong><br>
+                ✅ チャットパネルに「Ocean Dream チーム」と表示される<br>
+                ✅ チャンネル数が3以上表示される
+            </div>
+            
+            <div class="screenshot">
+                <strong>📸 スクリーンショット3:</strong> Ocean Dream 選択後のチャットパネル
+            </div>
+
+            <h3>4. その他の船舶のテスト</h3>
+            <ul>
+                <li>Grain Master → 「Grain Master チーム」</li>
+                <li>Star Carrier → 「Star Carrier チーム」</li>
+                <li>Blue Horizon → 「Blue Horizon チーム」</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>デバッグ情報の確認</h2>
+            
+            <h3>コンソールで実行するコマンド</h3>
+            <pre>// 現在の状態を確認
+console.log('現在のチーム:', window.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers?.get(1)?.getFiberRoots()?.values()?.next()?.value?.current?.memoizedState?.currentTeam);
+
+// AppContextの状態を確認（React DevToolsが必要）
+// React DevToolsをインストールして、Components タブで AppProvider を探す</pre>
+
+            <h3>エラーが発生した場合</h3>
+            <ol>
+                <li>コンソールのエラーメッセージを確認</li>
+                <li>Network タブで失敗したAPIリクエストを確認</li>
+                <li>以下の点をチェック：
+                    <ul>
+                        <li>チーム名が正しいか（例：pacific-glory-team）</li>
+                        <li>チームが実際に存在するか</li>
+                        <li>sho1ユーザーがチームに所属しているか</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <div class="test-section">
+            <h2>テスト結果の記録</h2>
+            <table border="1" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <th>船舶名</th>
+                    <th>期待されるチーム名</th>
+                    <th>実際の表示</th>
+                    <th>チャンネル数</th>
+                    <th>結果</th>
+                </tr>
+                <tr>
+                    <td>Pacific Glory</td>
+                    <td>Pacific Glory チーム</td>
+                    <td>_______________</td>
+                    <td>___</td>
+                    <td>[ ] PASS / [ ] FAIL</td>
+                </tr>
+                <tr>
+                    <td>Ocean Dream</td>
+                    <td>Ocean Dream チーム</td>
+                    <td>_______________</td>
+                    <td>___</td>
+                    <td>[ ] PASS / [ ] FAIL</td>
+                </tr>
+                <tr>
+                    <td>Grain Master</td>
+                    <td>Grain Master チーム</td>
+                    <td>_______________</td>
+                    <td>___</td>
+                    <td>[ ] PASS / [ ] FAIL</td>
+                </tr>
+                <tr>
+                    <td>Star Carrier</td>
+                    <td>Star Carrier チーム</td>
+                    <td>_______________</td>
+                    <td>___</td>
+                    <td>[ ] PASS / [ ] FAIL</td>
+                </tr>
+                <tr>
+                    <td>Blue Horizon</td>
+                    <td>Blue Horizon チーム</td>
+                    <td>_______________</td>
+                    <td>___</td>
+                    <td>[ ] PASS / [ ] FAIL</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="status warning">
+            <strong>重要:</strong> 各テストケースでスクリーンショットを撮影し、テスト結果を記録してください。
+        </div>
+    </div>
+</body>
+</html>

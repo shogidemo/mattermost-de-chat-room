@@ -47,6 +47,7 @@ const ChannelSelector: React.FC<ChannelSelectorProps> = ({
   initialChannelId,
 }) => {
   const { refreshChannels, state } = useApp();
+  const { currentTeam } = state;
   const [viewState, setViewState] = React.useState<ViewState>('channelList');
   const [selectedChannel, setSelectedChannel] = React.useState<Channel | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -209,15 +210,28 @@ const ChannelSelector: React.FC<ChannelSelectorProps> = ({
       >
         {viewState === 'channelList' ? (
           <>
-            <Typography 
-              variant="h6" 
-              component="h2"
-              onDoubleClick={resetPosition}
-              sx={{ cursor: 'pointer' }}
-              title="ダブルクリックで位置をリセット"
-            >
-              チャット
-            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+              <Typography 
+                variant="h6" 
+                component="h2"
+                onDoubleClick={resetPosition}
+                sx={{ cursor: 'pointer', lineHeight: 1.2 }}
+                title="ダブルクリックで位置をリセット"
+              >
+                {currentTeam ? currentTeam.display_name : 'チャット'}
+              </Typography>
+              {currentTeam && (
+                <Typography 
+                  variant="caption" 
+                  color="text.secondary"
+                  sx={{ lineHeight: 1 }}
+                >
+                  {currentTeam.display_name.includes('チーム') ? 
+                    currentTeam.display_name.replace(' チーム', '') + ' 船舶チーム' : 
+                    '船舶専用チーム'}
+                </Typography>
+              )}
+            </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Tooltip title="チャンネルリストを更新">
                 <IconButton 

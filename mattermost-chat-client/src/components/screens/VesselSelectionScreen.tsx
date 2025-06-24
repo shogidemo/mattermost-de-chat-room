@@ -113,7 +113,10 @@ const VesselSelectionScreen: React.FC<VesselSelectionScreenProps> = ({
                   },
                   height: '100%',
                 }}
-                onClick={() => onVesselSelect(vessel.id)}
+                onClick={() => {
+                  console.log(`[VesselSelectionScreen] 船舶カードクリック: ${vessel.name} (ID: ${vessel.id})`);
+                  onVesselSelect(vessel.id);
+                }}
               >
                 <CardContent sx={{ p: 3 }}>
                   {/* ヘッダー部分 */}
