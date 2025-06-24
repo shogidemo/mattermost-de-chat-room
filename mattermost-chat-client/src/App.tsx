@@ -11,6 +11,8 @@ import ChatBubble from './components/ui/common/ChatBubble';
 import ChannelSelector from './components/ui/channels/ChannelSelector';
 import VesselSelectionScreen from './components/screens/VesselSelectionScreen';
 import { CircularProgress, Backdrop } from '@mui/material';
+import { VesselTeamDebugger } from './components/debug/VesselTeamDebugger';
+import ErrorBanner from './components/ErrorBanner';
 
 // Material-UIテーマ設定
 const theme = createTheme({
@@ -140,6 +142,7 @@ const AppContent: React.FC = () => {
   const [showChannelPopup, setShowChannelPopup] = React.useState(false);
   const [mergedChannels, setMergedChannels] = React.useState(DEVELOPMENT_MODE ? mockChannels : []);
   const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   // ユーザーログイン状態に基づく画面制御
   React.useEffect(() => {
@@ -151,6 +154,11 @@ const AppContent: React.FC = () => {
       }
     }
   }, [user, currentScreen]);
+
+  // デバッグ用: 画面状態の変更を監視
+  React.useEffect(() => {
+    console.log(`[App] 画面状態が変更されました: ${currentScreen}`);
+  }, [currentScreen]);
 
   // 実チャンネルリストとモックチャンネルリストの統合
   React.useEffect(() => {
@@ -308,29 +316,45 @@ const AppContent: React.FC = () => {
         console.log('✅ 船舶専用チーム切り替え完了');
         console.log('📋 切り替え後の期待チーム:', selectedTeam.display_name);
         
-        // 切り替え後の状態確認（少し遅延して確認）
-        setTimeout(() => {
-          console.log('📋 切り替え後の実際の状態:', {
-            currentTeam: state.currentTeam?.display_name || state.currentTeam?.name || 'なし',
-            currentTeamId: state.currentTeam?.id || 'なし',
-            channelCount: state.channels.length,
-            channels: state.channels.map(ch => ch.display_name || ch.name)
-          });
-        }, 1000);
+        // 状態更新を待つ
+        console.log('⏳ 状態更新を待機中...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        console.log('📋 切り替え後の実際の状態:', {
+          currentTeam: state.currentTeam?.display_name || state.currentTeam?.name || 'なし',
+          currentTeamId: state.currentTeam?.id || 'なし',
+          channelCount: state.channels.length,
+          channels: state.channels.map(ch => ch.display_name || ch.name)
+        });
+        
+        // 成功した場合のみメイン画面に遷移
+        console.log('[App.handleVesselSelect] 画面遷移実行: vessel-selection → main');
+        console.log('[App.handleVesselSelect] 現在の画面状態:', currentScreen);
+        setCurrentScreen('main');
+        console.log('[App.handleVesselSelect] setCurrentScreen(main)呼び出し完了');
         
       } catch (error) {
         console.error('❌ 船舶チーム切り替えエラー:', error);
         console.error('エラー詳細:', error);
         
         // エラーを画面に表示
-        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-        alert(`船舶チーム切り替えに失敗しました:\n\n${errorMessage}`);
+        const message = error instanceof Error ? error.message : '不明なエラー';
         
-        // エラーが発生してもメイン画面には遷移する
+        // ユーザーフレンドリーなエラーメッセージ
+        if (message.includes('アクセスに失敗')) {
+          // 権限エラーの場合
+          setErrorMessage(message);
+        } else {
+          setErrorMessage(`船舶チーム切り替えに失敗しました: ${message}`);
+        }
+        
+        // エラーが発生した場合は遷移しない
+        return;
       }
-      
-      setCurrentScreen('main');
+    } else {
+      console.error(`[App.handleVesselSelect] 船舶が見つかりません - vesselId: ${vesselId}`);
     }
+    console.log('[App.handleVesselSelect] 完了');
   };
 
   if (!DEVELOPMENT_MODE && !user) {
@@ -338,12 +362,21 @@ const AppContent: React.FC = () => {
   }
 
   // 画面の切り替えロジック
+  console.log(`[App] レンダリング - 現在の画面: ${currentScreen}`);
+  console.log(`[App] user: ${user ? user.username : 'なし'}, DEVELOPMENT_MODE: ${DEVELOPMENT_MODE}`);
   if (currentScreen === 'vessel-selection') {
+    console.log('[App] 船舶選択画面を表示');
     return (
-      <VesselSelectionScreen
-        vessels={mockVessels}
-        onVesselSelect={handleVesselSelect}
-      />
+      <>
+        <ErrorBanner 
+          error={errorMessage} 
+          onClose={() => setErrorMessage(null)} 
+        />
+        <VesselSelectionScreen
+          vessels={mockVessels}
+          onVesselSelect={handleVesselSelect}
+        />
+      </>
     );
   }
 
@@ -382,6 +415,9 @@ const AppContent: React.FC = () => {
           )}
         </div>
       </Backdrop>
+      
+      {/* デバッグパネル（開発環境のみ） */}
+      {import.meta.env.DEV && <VesselTeamDebugger />}
     </>
   );
 };
