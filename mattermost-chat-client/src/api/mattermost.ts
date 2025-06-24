@@ -1017,6 +1017,11 @@ class MattermostClient {
         console.log('ℹ️ ユーザーは既に船舶チームのメンバー:', { teamId, userId });
         return;
       }
+      // 権限エラーの場合も正常（既にメンバーの場合がある）
+      if (error.status_code === 403 && error.id === 'api.context.permissions.app_error') {
+        console.log('ℹ️ ユーザーは既に船舶チームのメンバー（権限エラー）:', { teamId, userId });
+        return;
+      }
       console.error('❌ 船舶チームメンバー追加エラー:', error);
       throw error;
     }
